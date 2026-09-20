@@ -176,13 +176,13 @@ async function startCamera() {
     engine.smoother.reset();
     const saved = CalibrationManager.load();
     // Prefer a forgiving live default during onboarding; saved thresholds apply after completion.
-    engine.enter = 0.72;
-    engine.exit = 0.88;
+    engine.enter = 0.75;
+    engine.exit = 0.82;
     engine.openBaseline = 0.95;
     engine.easyMode = true;
     if (saved && saved.facing === camera.facing) {
-      engine.enter = Math.max(saved.enter, 0.6);
-      engine.exit = Math.max(saved.exit, engine.enter + 0.12);
+      engine.enter = Math.max(saved.enter, 0.65);
+      engine.exit = Math.max(saved.exit, engine.enter + 0.08);
     }
     calibration = new CalibrationManager();
     step = 0;

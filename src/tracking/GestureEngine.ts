@@ -72,8 +72,8 @@ export class GestureEngine {
   smoother = new HandSmoother();
   mirrored = true;
   /** Phone-friendly absolute ceiling; relative openBaseline does most of the work. */
-  enter = 0.68;
-  exit = 0.85;
+  enter = 0.7;
+  exit = 0.78;
   openBaseline = 0.95;
   /** Ultra-forgiving thresholds used during onboarding. */
   easyMode = false;
@@ -189,7 +189,8 @@ export class GestureEngine {
       (this.closingBoost &&
         this.pinch < this.openBaseline * (this.easyMode ? 0.9 : 0.8));
     const released =
-      this.pinch > Math.max(this.exit, this.openBaseline * (this.easyMode ? 0.9 : 0.82)) &&
+      this.pinch >
+        Math.max(this.exit, this.openBaseline * (this.easyMode ? 0.82 : 0.75)) &&
       !this.closingBoost;
     const hit = resolveHit(this.point);
     if (this.requireOpen) {
