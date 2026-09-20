@@ -315,15 +315,17 @@ function tutorial(s: TrackingState, t: number) {
     const closing =
       s.events.some((e) => e.type === "click") ||
       s.state === "PINCHED" ||
+      s.state === "PINCH_STARTING" ||
       s.state === "DRAGGING" ||
-      (s.state === "PINCH_STARTING" && progress > 0.22) ||
-      progress > 0.35;
+      progress > 0.12 ||
+      (engine.openBaseline > 0 && s.pinch < engine.openBaseline * 0.92);
     if (closing) {
       openSince ||= t;
       if (
         s.events.some((e) => e.type === "click") ||
-        progress > 0.38 ||
-        t - openSince > 160
+        progress > 0.18 ||
+        s.state === "PINCHED" ||
+        t - openSince > 60
       )
         advance();
       else status("Yes — keep pinching…");

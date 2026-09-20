@@ -54,11 +54,12 @@ export function isPinching(
   const tips = tipDistance(h);
   const palm = Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]));
   if (easy) {
+    // Tutorial / onboarding: accept almost any thumb–index close.
     return (
-      ratio < Math.max(enter, 0.78) ||
-      tips < 0.2 ||
-      tips < palm * 0.75 ||
-      ratio < openBaseline * 0.88
+      ratio < Math.max(enter, 0.92) ||
+      tips < 0.32 ||
+      tips < palm * 0.95 ||
+      ratio < openBaseline * 0.96
     );
   }
   return (
@@ -72,8 +73,8 @@ export class GestureEngine {
   smoother = new HandSmoother();
   mirrored = true;
   /** Phone-friendly absolute ceiling; relative openBaseline does most of the work. */
-  enter = 0.7;
-  exit = 0.78;
+  enter = 0.72;
+  exit = 0.8;
   openBaseline = 0.95;
   /** Ultra-forgiving thresholds used during onboarding. */
   easyMode = false;
@@ -158,8 +159,9 @@ export class GestureEngine {
     const thumbTip = mapPoint(hand.landmarks[4], this.mirrored);
     this.pinch = normalizePinch(hand);
     const closing =
-      this.prevPinch - this.pinch > 0.18 ||
-      (this.prevPinch > 0.7 && this.pinch < this.prevPinch * 0.75);
+      this.prevPinch - this.pinch > (this.easyMode ? 0.06 : 0.18) ||
+      (this.prevPinch > (this.easyMode ? 0.55 : 0.7) &&
+        this.pinch < this.prevPinch * (this.easyMode ? 0.92 : 0.75));
     this.prevPinch = this.pinch;
     if (closing) this.closingBoost = true;
     if (this.pinch > this.exit) this.closingBoost = false;
@@ -187,11 +189,13 @@ export class GestureEngine {
     const pinched =
       isPinching(hand, this.enter, this.openBaseline, this.easyMode) ||
       (this.closingBoost &&
-        this.pinch < this.openBaseline * (this.easyMode ? 0.9 : 0.8));
+        this.pinch < this.openBaseline * (this.easyMode ? 0.98 : 0.8));
     const released =
       this.pinch >
-        Math.max(this.exit, this.openBaseline * (this.easyMode ? 0.82 : 0.75)) &&
-      !this.closingBoost;
+        Math.max(
+          this.exit,
+          this.openBaseline * (this.easyMode ? 0.7 : 0.75),
+        ) && !this.closingBoost;
     const hit = resolveHit(this.point);
     if (this.requireOpen) {
       if (released) this.requireOpen = false;
@@ -246,7 +250,10 @@ export class GestureEngine {
         this.state = "PINCH_STARTING";
         this.swipeStart = undefined;
         this.openSince = null;
-        if (t - this.pinchSince >= (this.easyMode ? 35 : 55) && t - this.lastClick >= (this.easyMode ? 150 : 220)) {
+        if (
+          t - this.pinchSince >= (this.easyMode ? 16 : 55) &&
+          t - this.lastClick >= (this.easyMode ? 80 : 220)
+        ) {
           this.held = true;
           this.clicked = false;
           this.target = stableTarget ?? hit;

@@ -153,7 +153,7 @@ describe("temporal interaction", () => {
     const events = [];
     for (let i = 0; i < 8; i++)
       events.push(
-        ...e.update([hand(0.5, 0.5, i < 2 ? 0.9 : 0.7)], i * 40, "tutorial")
+        ...e.update([hand(0.5, 0.5, i < 2 ? 0.95 : 0.82)], i * 40, "tutorial")
           .events,
       );
     expect(events.some((x) => x.type === "click")).toBe(true);
