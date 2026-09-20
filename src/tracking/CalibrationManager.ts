@@ -18,7 +18,7 @@ export class CalibrationManager {
     if (this.scales.length < 300) this.scales.push(scale);
   }
   finish(facing: string): Calibration {
-    const enter = Math.min(0.55, Math.max(0.42, this.minPinch + 0.12));
+    const enter = Math.min(0.65, Math.max(0.5, this.minPinch + 0.14));
     return {
       enter,
       exit: enter + 0.16,

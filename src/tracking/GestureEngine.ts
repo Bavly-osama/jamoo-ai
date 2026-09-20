@@ -33,10 +33,15 @@ export const mapPoint = (p: Point, mirrored = true): Point => ({
   y: p.y,
 });
 export function tipDistance(h: Hand) {
-  return distance(h.landmarks[4], h.landmarks[8]);
+  const a = h.landmarks[4],
+    b = h.landmarks[8];
+  // Include depth — side-on phone pinches look farther apart in 2D only.
+  return Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.5);
 }
 export function normalizePinch(h: Hand) {
-  return tipDistance(h) / Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]));
+  return (
+    tipDistance(h) / Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]))
+  );
 }
 /** True when tips are close enough for a real-world pinch on phones. */
 export function isPinching(
@@ -46,19 +51,23 @@ export function isPinching(
 ) {
   const ratio = normalizePinch(h);
   const tips = tipDistance(h);
+  const palm = Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]));
   return (
     ratio < enter ||
-    tips < 0.055 ||
-    ratio < openBaseline * 0.58
+    tips < 0.12 ||
+    tips < palm * 0.5 ||
+    ratio < openBaseline * 0.72
   );
 }
 export class GestureEngine {
   smoother = new HandSmoother();
   mirrored = true;
   /** Phone-friendly absolute ceiling; relative openBaseline does most of the work. */
-  enter = 0.52;
-  exit = 0.7;
-  openBaseline = 0.9;
+  enter = 0.62;
+  exit = 0.8;
+  openBaseline = 0.95;
+  private prevPinch = 1;
+  private closingBoost = false;
   state: State = "IDLE";
   point: Point = { x: 0.5, y: 0.5 };
   rawPosition: Point = { x: 0.5, y: 0.5 };
@@ -134,7 +143,23 @@ export class GestureEngine {
     }
     this.primaryId = hand.id;
     this.confidence = hand.confidence;
-    this.rawPosition = mapPoint(hand.landmarks[8], this.mirrored);
+    const indexTip = mapPoint(hand.landmarks[8], this.mirrored);
+    const thumbTip = mapPoint(hand.landmarks[4], this.mirrored);
+    this.pinch = normalizePinch(hand);
+    const closing =
+      this.prevPinch - this.pinch > 0.18 ||
+      (this.prevPinch > 0.7 && this.pinch < this.prevPinch * 0.75);
+    this.prevPinch = this.pinch;
+    if (closing) this.closingBoost = true;
+    if (this.pinch > this.exit) this.closingBoost = false;
+    // Aim with the pinch contact point once fingers close — matches how people pinch on camera.
+    this.rawPosition =
+      this.pinch < this.openBaseline * 0.85
+        ? {
+            x: (indexTip.x + thumbTip.x) / 2,
+            y: (indexTip.y + thumbTip.y) / 2,
+          }
+        : indexTip;
     const old = this.point;
     this.point = this.smoother.update(this.rawPosition, t);
     const dt = Math.max(0.001, (t - this.previousTime) / 1000);
@@ -144,13 +169,16 @@ export class GestureEngine {
     };
     this.previousTime = t;
     this.lastReliable = t;
-    this.pinch = normalizePinch(hand);
     if (this.pinch > 0.55) {
       this.openBaseline += 0.08 * (this.pinch - this.openBaseline);
       this.openBaseline = clamp(this.openBaseline, 0.55, 1.4);
     }
-    const pinched = isPinching(hand, this.enter, this.openBaseline);
-    const released = this.pinch > Math.max(this.exit, this.openBaseline * 0.72);
+    const pinched =
+      isPinching(hand, this.enter, this.openBaseline) ||
+      (this.closingBoost && this.pinch < this.openBaseline * 0.8);
+    const released =
+      this.pinch > Math.max(this.exit, this.openBaseline * 0.82) &&
+      !this.closingBoost;
     const hit = resolveHit(this.point);
     if (this.requireOpen) {
       if (released) this.requireOpen = false;

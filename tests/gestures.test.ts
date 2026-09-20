@@ -120,15 +120,29 @@ describe("temporal interaction", () => {
       );
     expect(events.some((x) => x.type === "click")).toBe(true);
   });
-  it("detects relative pinch from an open-hand baseline", () => {
+  it("accepts a near-miss pinch with a small tip gap", () => {
     const e = new GestureEngine();
-    e.openBaseline = 1;
-    e.enter = 0.52;
+    e.openBaseline = 0.95;
+    e.enter = 0.62;
     const events = [];
     for (let i = 0; i < 10; i++)
       events.push(
-        ...e.update([hand(0.5, 0.5, i < 2 ? 1 : 0.5)], i * 40, "tutorial")
+        ...e.update([hand(0.5, 0.5, i < 2 ? 0.9 : 0.55)], i * 40, "tutorial")
           .events,
+      );
+    expect(events.some((x) => x.type === "click")).toBe(true);
+  });
+  it("treats a fast closing motion as a pinch", () => {
+    const e = new GestureEngine();
+    e.openBaseline = 1;
+    const events = [];
+    for (let i = 0; i < 8; i++)
+      events.push(
+        ...e.update(
+          [hand(0.5, 0.5, i === 0 ? 1 : i === 1 ? 0.75 : 0.58)],
+          i * 40,
+          "tutorial",
+        ).events,
       );
     expect(events.some((x) => x.type === "click")).toBe(true);
   });

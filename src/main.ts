@@ -176,11 +176,11 @@ async function startCamera() {
     engine.smoother.reset();
     const saved = CalibrationManager.load();
     // Prefer a forgiving live default during onboarding; saved thresholds apply after completion.
-    engine.enter = 0.52;
-    engine.exit = 0.7;
-    engine.openBaseline = 0.9;
+    engine.enter = 0.62;
+    engine.exit = 0.8;
+    engine.openBaseline = 0.95;
     if (saved && saved.facing === camera.facing) {
-      engine.enter = Math.max(saved.enter, 0.45);
+      engine.enter = Math.max(saved.enter, 0.55);
       engine.exit = Math.max(saved.exit, engine.enter + 0.14);
     }
     calibration = new CalibrationManager();
@@ -232,7 +232,7 @@ function advance() {
   const prompts = [
     "Raise your hand inside the camera view. Open your palm.",
     "Move your hand comfortably left, then right. The pointer follows your fingertip.",
-    "Move over the tile below. Pinch your thumb and index finger to select it.",
+    "Move over the tile below. Pinch thumb tip to index tip (leave a little space from the phone).",
     "Release, then pinch and hold the tile. Move it to either side.",
     "Release. Raise both hands and pinch with each. Spread them apart to resize.",
   ];
