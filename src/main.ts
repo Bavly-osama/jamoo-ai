@@ -43,8 +43,8 @@ document.querySelector("#app")!.innerHTML = `
  <form class="command-bar" id="command"><div class="ai-orb">✦</div><label for="command-input">AETHER AI</label><input id="command-input" maxlength="240" autocomplete="off" placeholder="Try “open system diagnostics”" aria-label="AI command"><button type="submit" id="command-send">Send ↗</button></form>
  <footer class="footer"><div class="footer-left"><span>CONTROL <b id="control-mode">STANDBY</b></span><span>RENDER <b id="fps">—</b></span><span>BUILD <b>1.0.0</b></span></div><div class="privacy">Your camera stays on your device</div></footer></div>
 </main>
-<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden>Pinch or tap here</button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
-<div class="camera-preview" id="camera-preview" hidden><video id="video" muted playsinline></video><canvas id="landmarks"></canvas><span id="camera-caption">LOCAL CAMERA</span></div><div id="pointer" class="pointer" style="opacity:0"></div>
+<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden>Pinch here</button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
+<div class="camera-preview" id="camera-preview" hidden><video id="video" muted playsinline></video><canvas id="landmarks"></canvas><span id="camera-caption">YOUR HAND</span></div><canvas id="hand-overlay" class="hand-overlay" aria-hidden="true"></canvas><div id="pointer" class="pointer" style="opacity:0"></div>
 <aside class="drawer" id="inspection" hidden aria-label="Object inspection"><button class="close" id="close-inspection" aria-label="Close inspection" data-target="close-inspection">×</button><div class="eyebrow">OBJECT INSPECTION</div><h2 id="inspection-title">Arc reactor / ARC–001</h2><p id="inspection-description">A self-contained holographic energy core. Spread two pinched hands to expand the projection.</p><div class="metric"><span>Projection scale</span><b id="inspection-scale">1.00×</b></div><div class="metric"><span>Rotation</span><b id="rotation-label">Active</b></div><button class="utility" id="rotate" data-target="rotate">Pause rotation</button><button class="utility" id="reset" data-target="reset">Reset workspace</button><p>Module tiles can be moved by pinching and holding. Release your pinch to place them.</p></aside>
 <aside class="drawer" id="debug" hidden aria-label="Developer diagnostics"><button class="close" id="close-debug" aria-label="Close diagnostics" data-target="close-debug">×</button><div class="eyebrow">DEVELOPER VIEW / SHIFT + D</div><h2>System diagnostics</h2><pre id="debug-data"></pre><label>minCutoff<input type="range" id="minCutoff" min=".5" max="5" step=".1" value="1.6"></label><label>beta<input type="range" id="beta" min="0" max="2" step=".05" value=".35"></label><label>dCutoff<input type="range" id="dCutoff" min=".5" max="3" step=".1" value="1"></label><label>Show landmarks<input type="checkbox" id="show-landmarks"></label><label>AI gesture fallback<input type="checkbox" id="ai-fallback"></label><button class="utility" id="recalibrate">Recalibrate hand</button><button class="utility" id="switch-camera">Switch front / back camera</button><button class="utility" id="restart-camera">Restart camera</button><p>Hand confidence is the model’s handedness score; detection and presence use separate internal thresholds. Reactor and scanner values are simulated.</p></aside><div class="toast" id="toast" role="status" hidden></div>`;
 
@@ -104,10 +104,7 @@ let calibration = new CalibrationManager(),
   stepSince = 0,
   moveMin = 1,
   moveMax = 0,
-  dragOrigin = { x: 0, y: 0 },
-  zoomSeen = false,
-  openSince = 0,
-  tutorialPinched = false;
+  openSince = 0;
 let toastTimer: ReturnType<typeof setTimeout>;
 function toast(message: string) {
   $("toast").textContent = message;
@@ -147,8 +144,11 @@ function stopCamera() {
   interaction.release();
   $("pointer").style.opacity = "0";
   $("camera-preview").hidden = true;
+  $("camera-preview").classList.remove("prominent");
   $("camera-toggle").textContent = "Enable camera";
   $("tracking-label").textContent = "Offline";
+  const overlay = $<HTMLCanvasElement>("hand-overlay");
+  overlay.getContext("2d")?.clearRect(0, 0, overlay.width, overlay.height);
 }
 async function startCamera() {
   if (starting) return;
@@ -167,6 +167,7 @@ async function startCamera() {
     const started = await camera.start();
     if (!started || !starting || generation !== setupGeneration) return;
     $("camera-preview").hidden = false;
+    $("camera-preview").classList.add("prominent");
     status("Camera connected. Loading local hand tracking…");
     await tracker.init();
     if (!starting || generation !== setupGeneration) return;
@@ -190,7 +191,7 @@ async function startCamera() {
     openSince = 0;
     moveMin = 1;
     moveMax = 0;
-    status("Raise your hand inside the camera view. Open your palm.");
+    status("Raise your hand — watch the glowing skeleton. Open your palm.");
     $("welcome-title").textContent = "Make the connection.";
     $("camera-toggle").textContent = "Disable camera";
     void fetch("/api/health")
@@ -225,38 +226,34 @@ async function startCamera() {
     );
   }
 }
+function finishTutorial() {
+  const c = calibration.finish(camera.facing);
+  engine.enter = Math.max(c.enter, 0.55);
+  engine.exit = Math.max(c.exit, engine.enter + 0.12);
+  engine.easyMode = false;
+  CalibrationManager.save(c);
+  $("welcome").hidden = true;
+  $("tutorial-target").hidden = true;
+  $("camera-preview").classList.remove("prominent");
+  step = -1;
+  interaction.reset();
+  setMode("hand");
+  toast("You’re connected. Move, pinch, hold, release.");
+}
 function advance() {
   step++;
   stepSince = performance.now();
   openSince = 0;
   $("setup-progress").querySelector<HTMLElement>("span")!.style.width =
-    `${(step / 5) * 100}%`;
+    `${(step / 3) * 100}%`;
   const prompts = [
-    "Raise your hand inside the camera view. Open your palm.",
-    "Move your hand comfortably left, then right. The pointer follows your fingertip.",
-    "Just pinch anywhere — thumb tip toward index tip. Or tap the button.",
-    "Release, then pinch and hold the tile. Move it to either side.",
-    "Release. Raise both hands and pinch with each. Spread them apart to resize.",
+    "Raise your hand — watch the glowing skeleton. Open your palm.",
+    "Move your hand left, then right. The pointer follows your fingertip.",
+    "Pinch here once — thumb tip toward index tip. Or tap the button.",
   ];
   status(prompts[step] ?? "Connection established. Welcome to your workspace.");
-  $("tutorial-target").hidden = step < 2 || step > 3;
-  if (step === 3) {
-    tutorialPinched = false;
-    dragOrigin = { ...engine.point };
-  }
-  if (step === 4) zoomSeen = false;
-  if (step === 5) {
-    const c = calibration.finish(camera.facing);
-    engine.enter = Math.max(c.enter, 0.55);
-    engine.exit = Math.max(c.exit, engine.enter + 0.12);
-    engine.easyMode = false;
-    CalibrationManager.save(c);
-    $("welcome").hidden = true;
-    step = -1;
-    interaction.reset();
-    setMode("hand");
-    toast("You’re connected. Move, pinch, hold, release.");
-  }
+  $("tutorial-target").hidden = step !== 2;
+  if (step === 3) finishTutorial();
 }
 function nearTutorial(point: { x: number; y: number }) {
   if (step === 2) return true;
@@ -270,10 +267,7 @@ function nearTutorial(point: { x: number; y: number }) {
 }
 function tutorialHit(point: { x: number; y: number }) {
   if (step === 2) return "tutorial";
-  const direct = interaction.hit(point.x * innerWidth, point.y * innerHeight);
-  if (direct) return direct;
-  if (step === 3 && nearTutorial(point)) return "tutorial";
-  return null;
+  return interaction.hit(point.x * innerWidth, point.y * innerHeight);
 }
 function tutorial(s: TrackingState, t: number) {
   if (step < 0) return;
@@ -328,34 +322,12 @@ function tutorial(s: TrackingState, t: number) {
         t - openSince > 60
       )
         advance();
-      else status("Yes — keep pinching…");
+      else status("Yes — one pinch…");
     } else {
       openSince = 0;
-      status("Pinch thumb toward index anywhere — or tap the big button.");
+      status("Pinch here once — or tap the button.");
     }
-  } else if (step === 3) {
-    if (s.events.some((e) => e.type === "drop" || e.type === "click"))
-      tutorialPinched = true;
-    if (
-      (tutorialPinched || s.state === "DRAGGING" || s.state === "PINCHED") &&
-      (s.events.some((e) => e.type === "drag") ||
-        distance(s.point, dragOrigin) > 0.04)
-    )
-      advance();
-    else status("Pinch, hold, and move your hand a little to either side.");
-  } else if (step === 4) {
-    const z = s.events.find((e) => e.type === "zoom");
-    if (z) {
-      zoomSeen = true;
-      if (z.scale! > 1.1) advance();
-    }
-    if (t - stepSince > 12000)
-      status("You can skip zoom — pinch both hands apart, or cancel setup.");
   }
-  if (step >= 0 && t - stepSince > 20000 && step === 4 && !zoomSeen)
-    status(
-      "Show both hands fully. Pinch with both, then spread apart. You can cancel setup to explore with a mouse.",
-    );
 }
 tracker.onResult = (hands, time) => {
   lastHands = hands;
@@ -708,26 +680,101 @@ window.addEventListener("orientationchange", () => {
   interaction.reset();
   engine.smoother.reset();
 });
+const HAND_CONNECTIONS: [number, number][] = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 4],
+  [0, 5],
+  [5, 6],
+  [6, 7],
+  [7, 8],
+  [0, 9],
+  [9, 10],
+  [10, 11],
+  [11, 12],
+  [0, 13],
+  [13, 14],
+  [14, 15],
+  [15, 16],
+  [0, 17],
+  [17, 18],
+  [18, 19],
+  [19, 20],
+  [5, 9],
+  [9, 13],
+  [13, 17],
+];
 const landmarkCanvas = $<HTMLCanvasElement>("landmarks"),
-  ctx = landmarkCanvas.getContext("2d")!;
-function drawLandmarks() {
-  landmarkCanvas.width = 320;
-  landmarkCanvas.height = 240;
-  if ($("debug").hidden || !$<HTMLInputElement>("show-landmarks").checked)
-    return;
-  ctx.fillStyle = "#b0faff";
-  for (const h of lastHands)
-    for (const p of h.landmarks) {
-      ctx.beginPath();
-      ctx.arc(
-        (engine.mirrored ? 1 - p.x : p.x) * 320,
-        p.y * 240,
-        2,
+  landmarkCtx = landmarkCanvas.getContext("2d")!,
+  handOverlay = $<HTMLCanvasElement>("hand-overlay"),
+  overlayCtx = handOverlay.getContext("2d")!;
+function paintHandSkeleton(
+  target: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  screenSpace: boolean,
+) {
+  target.clearRect(0, 0, width, height);
+  if (!lastHands.length || performance.now() - lastResult > 250) return;
+  for (const h of lastHands) {
+    const pts = h.landmarks.map((p) => {
+      const x = engine.mirrored ? 1 - p.x : p.x;
+      return { x: x * width, y: p.y * height };
+    });
+    target.lineWidth = screenSpace ? Math.max(2, width * 0.0025) : 2.5;
+    target.strokeStyle = "rgba(126, 240, 255, 0.85)";
+    target.shadowColor = "#5ddfff";
+    target.shadowBlur = screenSpace ? 8 : 4;
+    for (const [a, b] of HAND_CONNECTIONS) {
+      target.beginPath();
+      target.moveTo(pts[a].x, pts[a].y);
+      target.lineTo(pts[b].x, pts[b].y);
+      target.stroke();
+    }
+    target.shadowBlur = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const tip = i === 4 || i === 8;
+      target.beginPath();
+      target.fillStyle = tip ? "#fff6a8" : "#b0faff";
+      target.arc(
+        pts[i].x,
+        pts[i].y,
+        tip ? (screenSpace ? 6 : 5) : screenSpace ? 3.5 : 3.2,
         0,
         Math.PI * 2,
       );
-      ctx.fill();
+      target.fill();
     }
+  }
+}
+function drawLandmarks() {
+  const preview = $("camera-preview");
+  if (!preview.hidden) {
+    const w = Math.max(160, Math.round(preview.clientWidth) || 320);
+    const h = Math.max(120, Math.round(preview.clientHeight) || 240);
+    if (landmarkCanvas.width !== w || landmarkCanvas.height !== h) {
+      landmarkCanvas.width = w;
+      landmarkCanvas.height = h;
+    }
+    paintHandSkeleton(landmarkCtx, w, h, false);
+  } else {
+    landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+  }
+  const forceDebug =
+    !$("debug").hidden && $<HTMLInputElement>("show-landmarks").checked;
+  if (running || forceDebug) {
+    if (
+      handOverlay.width !== innerWidth ||
+      handOverlay.height !== innerHeight
+    ) {
+      handOverlay.width = innerWidth;
+      handOverlay.height = innerHeight;
+    }
+    paintHandSkeleton(overlayCtx, innerWidth, innerHeight, true);
+  } else {
+    overlayCtx.clearRect(0, 0, handOverlay.width, handOverlay.height);
+  }
 }
 let cameraFrames = 0,
   lastCameraTime = -1,
@@ -764,6 +811,7 @@ function frame(t: number) {
   }
   interaction.tick(dt);
   scene?.render(t, perf.quality, state?.point);
+  if (running || !$("camera-preview").hidden) drawLandmarks();
   if (t - lastDebug > 300) {
     lastDebug = t;
     $("fps").textContent = Math.round(perf.fps) + " FPS";
@@ -772,7 +820,6 @@ function frame(t: number) {
     $("render-meter").style.width = Math.min(100, (perf.fps / 60) * 100) + "%";
     $("clock").textContent = new Date().toLocaleTimeString("en-GB");
     $("inspection-scale").textContent = (scene?.scale ?? 1).toFixed(2) + "×";
-    drawLandmarks();
     if (!$("debug").hidden) {
       const b = ai.budget;
       $("debug-data").textContent =

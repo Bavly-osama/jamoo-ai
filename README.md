@@ -16,7 +16,7 @@ npm run dev
 
 Open http://localhost:5173. Optional: set `GEMINI_API_KEY` in `.env` and restart the server. Never use a `VITE_` prefix for secrets. No API key is needed for tracking, gestures, graphics, or calibration.
 
-Select **Enable camera**, allow access, and follow the detection-gated tutorial: open palm, move left/right, pinch the tile, release and drag it, then pinch with both hands and spread. Completion has no skip timer. **Explore with mouse** is an explicitly separate camera-free preview; it does not mark calibration complete.
+Select **Enable camera**, allow access, and follow the short tutorial: open palm, move left/right, then **Pinch here** once. A live hand skeleton stays visible while the camera is on. **Explore with mouse** is a separate camera-free preview; it does not mark calibration complete.
 
 The browser must receive actual changing video frames before loading the model. No-hand video remains in setup. A front camera mirrors both video and coordinate interpretation exactly once. A rear camera is not mirrored. Returning from a backgrounded tab requires enabling the camera again; this intentionally avoids silently reopening it.
 
