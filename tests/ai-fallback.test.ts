@@ -62,3 +62,27 @@ it("dragging never enters semantic fallback", async () => {
     );
   expect(calls).toBe(0);
 });
+it("tutorial pinch assist fires only over the tile with a sustained close", async () => {
+  let calls = 0;
+  let payload: Record<string, unknown> = {};
+  const service = new GeminiCommandService();
+  service.request = async (p) => {
+    calls++;
+    payload = p;
+    return { action: "pinch_click", confidence: 0.9 };
+  };
+  const r = new GeminiGestureResolver(service);
+  r.enabled = true;
+  for (let i = 0; i <= 25; i++)
+    await r.observe(
+      { x: 0.5, y: 0.5 },
+      i * 40,
+      "tutorial_pinch",
+      0.3,
+      false,
+      true,
+    );
+  expect(calls).toBe(1);
+  expect(payload.context).toBe("tutorial_pinch");
+  expect(payload).not.toHaveProperty("image");
+});

@@ -10,6 +10,7 @@ export const actions = [
   "SHOW_STATS",
   "swipe_left",
   "swipe_right",
+  "pinch_click",
 ] as const;
 export const DecisionSchema = z
   .object({
@@ -29,7 +30,7 @@ export const PayloadSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("gesture"),
       gestureCandidates: z
-        .array(z.enum(["swipe", "drag", "none"]))
+        .array(z.enum(["swipe", "drag", "pinch", "none"]))
         .min(1)
         .max(3),
       confidence: z.number().min(0).max(1),
@@ -39,7 +40,7 @@ export const PayloadSchema = z.discriminatedUnion("kind", [
       velocity: z.number().min(0).max(10),
       pinch: z.number().min(0).max(3),
       duration: z.number().min(0).max(5000),
-      context: z.literal("carousel"),
+      context: z.enum(["carousel", "tutorial_pinch"]),
     })
     .strict(),
 ]);

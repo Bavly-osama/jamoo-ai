@@ -98,6 +98,27 @@ describe("temporal interaction", () => {
       events.push(...e.update([hand(0.15 + i * 0.06)], i * 40, null).events);
     expect(events.some((x) => x.type === "cancel")).toBe(false);
   });
+  it("acquires click if target appears after pinch starts", () => {
+    const e = new GestureEngine();
+    const events = [];
+    for (let i = 0; i < 8; i++)
+      events.push(
+        ...e.update([hand(0.5, 0.5, 0.15)], i * 40, i < 4 ? null : "tutorial")
+          .events,
+      );
+    expect(events.filter((x) => x.type === "click")).toHaveLength(1);
+    expect(events.find((x) => x.type === "click")?.target).toBe("tutorial");
+  });
+  it("accepts a partial pinch under the forgiving enter threshold", () => {
+    const e = new GestureEngine();
+    const events = [];
+    for (let i = 0; i < 8; i++)
+      events.push(
+        ...e.update([hand(0.5, 0.5, i < 2 ? 0.8 : 0.32)], i * 40, "tutorial")
+          .events,
+      );
+    expect(events.some((x) => x.type === "click")).toBe(true);
+  });
   it("two hands crossing retain primary identity", () => {
     const e = new GestureEngine();
     const a = hand(0.3, 0.5, 0.8);

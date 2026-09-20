@@ -1,49 +1,25 @@
-import "dotenv/config";
-import express from "express";
-import rateLimit from "express-rate-limit";
-import helmet from "helmet";
-import { GoogleGenAI } from "@google/genai";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
-import { DecisionSchema, validatePayload, actions } from "./schema";
+import { GoogleGenAI } from "@google/genai";
+import { DecisionSchema, validatePayload, actions } from "../server/schema";
 import { TokenBudgetManager } from "../src/ai/TokenBudgetManager";
-const app = express();
+
 const budget = new TokenBudgetManager();
 const ai = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   : null;
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "blob:"],
-        workerSrc: ["'self'", "blob:"],
-        connectSrc: ["'self'"],
-        upgradeInsecureRequests:
-          process.env.NODE_ENV === "production" ? [] : null,
-      },
-    },
-  }),
-);
-app.use(express.json({ limit: "2kb" }));
-app.get("/api/health", (_req, res) =>
-  res.json({ ok: true, aiEnabled: Boolean(ai) }),
-);
-app.use(
-  "/api/gesture/resolve",
-  rateLimit({
-    windowMs: 60000,
-    limit: 8,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-  }),
-);
 let pending = false;
-app.post("/api/gesture/resolve", async (req, res) => {
-  const origin = req.get("origin");
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  const origin = String(req.headers.origin ?? "");
   const allowed = (process.env.APP_ORIGIN ?? "http://localhost:5173")
     .split(",")
     .map((value) => value.trim())
@@ -163,33 +139,4 @@ app.post("/api/gesture/resolve", async (req, res) => {
   } finally {
     pending = false;
   }
-});
-app.use(express.static(resolve("dist")));
-app.get("/{*path}", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  res.sendFile(resolve("dist/index.html"));
-});
-app.use(
-  (
-    err: unknown,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction,
-  ) => {
-    res
-      .status((err as { status?: number }).status ?? 500)
-      .json({ error: "Request could not be processed" });
-  },
-);
-const port = Number(process.env.PORT ?? 4317);
-const listener = app.listen(port, "0.0.0.0");
-listener.on("listening", () =>
-  console.log("Aether API listening on port " + port),
-);
-listener.on("error", (error) => {
-  console.error("Aether API failed to bind:", error.message);
-  process.exitCode = 1;
-});
+}

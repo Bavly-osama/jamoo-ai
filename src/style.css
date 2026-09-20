@@ -790,15 +790,25 @@ h1 {
   transition: width 0.4s;
 }
 .tutorial-target {
-  width: 105px;
-  height: 70px;
+  width: min(180px, 70vw);
+  height: 96px;
   margin: 20px auto;
   border: 1px dashed var(--cyan);
   display: grid;
   place-items: center;
   color: var(--cyan);
-  font-size: 12px;
+  font-size: 13px;
   background: #21414d;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+.tutorial-target.hovered,
+.tutorial-target:hover {
+  border-color: #c7fbff;
+  background: #2a5562;
+  box-shadow: 0 0 22px #5edcea55;
 }
 .camera-preview {
   position: fixed;

@@ -42,6 +42,7 @@ export class GeminiCommandService {
           "SHOW_STATS",
           "swipe_left",
           "swipe_right",
+          "pinch_click",
         ].includes(data.action) ||
         typeof data.confidence !== "number"
       )

@@ -174,9 +174,12 @@ async function startCamera() {
     engine.mirrored = camera.facing === "user";
     engine.smoother.reset();
     const saved = CalibrationManager.load();
+    // Prefer a forgiving live default during onboarding; saved thresholds apply after completion.
+    engine.enter = 0.4;
+    engine.exit = 0.56;
     if (saved && saved.facing === camera.facing) {
-      engine.enter = saved.enter;
-      engine.exit = saved.exit;
+      engine.enter = Math.max(saved.enter, 0.34);
+      engine.exit = Math.max(saved.exit, engine.enter + 0.14);
     }
     calibration = new CalibrationManager();
     step = 0;
@@ -187,6 +190,15 @@ async function startCamera() {
     status("Raise your hand inside the camera view. Open your palm.");
     $("welcome-title").textContent = "Make the connection.";
     $("camera-toggle").textContent = "Disable camera";
+    void fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.aiEnabled) {
+          resolver.enabled = true;
+          $<HTMLInputElement>("ai-fallback").checked = true;
+        }
+      })
+      .catch(() => {});
     camera.stream?.getVideoTracks()[0]?.addEventListener("ended", () => {
       if (running) {
         stopCamera();
@@ -250,21 +262,35 @@ function tutorial(s: TrackingState, t: number) {
     s.pinch,
     distance(h.landmarks[0], h.landmarks[9]),
   );
+  // Adapt enter live from the open-hand baseline so partial pinches still count.
+  if (s.pinch > 0.6)
+    engine.enter = Math.min(engine.enter, Math.max(0.34, s.pinch * 0.62));
   if (step === 0) {
-    if (s.pinch > 0.55 && s.confidence >= 0.65) {
+    if (s.pinch > 0.5 && s.confidence >= 0.65) {
       openSince ||= t;
       if (t - openSince > 400) advance();
     } else openSince = 0;
   } else if (step === 1) {
     moveMin = Math.min(moveMin, s.raw.x);
     moveMax = Math.max(moveMax, s.raw.x);
-    if (moveMax - moveMin > 0.23) advance();
-  } else if (
-    step === 2 &&
-    s.events.some((e) => e.type === "click" && e.target === "tutorial")
-  )
-    advance();
-  else if (step === 3) {
+    if (moveMax - moveMin > 0.2) advance();
+  } else if (step === 2) {
+    const tile = $("tutorial-target");
+    tile.classList.toggle("hovered", s.hover === "tutorial" || s.state === "PINCH_STARTING");
+    if (s.events.some((e) => e.type === "click" && e.target === "tutorial"))
+      advance();
+    else if (s.state === "HOVERING" && s.hover === "tutorial")
+      status("Good — now pinch thumb and index together.");
+    else if (s.state === "PINCH_STARTING" || s.state === "PINCHED")
+      status(
+        s.hover === "tutorial" || interaction.selected === "tutorial"
+          ? "Hold the pinch…"
+          : "Keep the glow on “Pinch here”, then pinch.",
+      );
+    else if (s.pinch < 0.5)
+      status("Almost — close thumb and index a bit more over the tile.");
+    else status("Move the glow onto “Pinch here”, then pinch.");
+  } else if (step === 3) {
     if (s.events.some((e) => e.type === "drop")) tutorialPinched = true;
     if (
       tutorialPinched &&
@@ -287,32 +313,48 @@ function tutorial(s: TrackingState, t: number) {
 tracker.onResult = (hands, time) => {
   lastHands = hands;
   lastResult = performance.now();
-  const hit = interaction.hit(
-    engine.point.x * innerWidth,
-    engine.point.y * innerHeight,
+  state = engine.update(hands, time, (point) =>
+    interaction.hit(point.x * innerWidth, point.y * innerHeight),
   );
-  state = engine.update(hands, time, hit);
   applyState(state, time);
-  if (step < 0 && hands.length) {
+  if (hands.length) {
     const region = document.querySelector(".modules")!.getBoundingClientRect();
-    const context =
+    const overCarousel =
       state.point.y * innerHeight >= region.top &&
-      state.point.y * innerHeight <= region.bottom
-        ? "carousel"
-        : "";
+      state.point.y * innerHeight <= region.bottom;
+    const context =
+      step === 2
+        ? "tutorial_pinch"
+        : step < 0 && overCarousel
+          ? "carousel"
+          : "";
     const captured = activeModule;
+    const tutorialStep = step;
     void resolver
       .observe(
         state.point,
         time,
         context,
         state.pinch,
-        !["IDLE", "HOVERING"].includes(state.state),
+        !["IDLE", "HOVERING", "PINCH_STARTING"].includes(state.state),
+        state.hover === "tutorial" ||
+          interaction.hit(
+            state.point.x * innerWidth,
+            state.point.y * innerHeight,
+          ) === "tutorial",
       )
       .then((d) => {
+        if (!d || d.confidence < 0.8) return;
         if (
-          d &&
-          d.confidence >= 0.8 &&
+          tutorialStep === 2 &&
+          step === 2 &&
+          d.action === "pinch_click"
+        ) {
+          advance();
+          return;
+        }
+        if (
+          step < 0 &&
           captured === activeModule &&
           state &&
           ["IDLE", "HOVERING"].includes(state.state)

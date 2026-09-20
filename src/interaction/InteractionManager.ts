@@ -1,12 +1,13 @@
 import type { GestureEvent } from "../tracking/GestureEngine";
 export class InteractionManager {
   selected = "core";
+  pad = 28;
   private grabbed: HTMLElement | null = null;
   private offset = { x: 0, y: 0 };
   private position = { x: 0, y: 0 };
   private goal = { x: 0, y: 0 };
   private velocity = { x: 0, y: 0 };
-  hit(x: number, y: number) {
+  hit(x: number, y: number, pad = this.pad) {
     const modal = document.querySelector(".welcome:not([hidden])");
     const elements = [
       ...document.querySelectorAll<HTMLElement>("[data-target]"),
@@ -21,11 +22,13 @@ export class InteractionManager {
           return false;
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) return false;
+        const soft =
+          el.dataset.target === "tutorial" ? Math.max(pad, 56) : pad;
         return (
-          x >= r.left - 10 &&
-          x <= r.right + 10 &&
-          y >= r.top - 10 &&
-          y <= r.bottom + 10
+          x >= r.left - soft &&
+          x <= r.right + soft &&
+          y >= r.top - soft &&
+          y <= r.bottom + soft
         );
       })?.dataset.target ?? null
     );

@@ -18,10 +18,10 @@ export class CalibrationManager {
     if (this.scales.length < 300) this.scales.push(scale);
   }
   finish(facing: string): Calibration {
-    const enter = Math.min(0.32, Math.max(0.18, this.minPinch + 0.08));
+    const enter = Math.min(0.4, Math.max(0.3, this.minPinch + 0.1));
     return {
       enter,
-      exit: enter + 0.15,
+      exit: enter + 0.16,
       handScale:
         this.scales.reduce((a, b) => a + b, 0) /
         Math.max(1, this.scales.length),
@@ -38,7 +38,7 @@ export class CalibrationManager {
       return c &&
         Number.isFinite(c.enter) &&
         c.enter >= 0.15 &&
-        c.enter <= 0.4 &&
+        c.enter <= 0.45 &&
         c.exit > c.enter &&
         Date.now() - c.created < 30 * 86400000
         ? c
