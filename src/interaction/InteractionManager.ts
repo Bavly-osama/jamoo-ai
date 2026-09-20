@@ -23,7 +23,13 @@ export class InteractionManager {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) return false;
         const soft =
-          el.dataset.target === "tutorial" ? Math.max(pad, 56) : pad;
+          el.dataset.target === "tutorial"
+            ? Math.max(pad, 56)
+            : el.dataset.target === "core"
+              ? Math.max(pad, 72)
+              : el.dataset.target === "hologram-scale"
+                ? Math.max(pad, 40)
+                : pad;
         return (
           x >= r.left - soft &&
           x <= r.right + soft &&

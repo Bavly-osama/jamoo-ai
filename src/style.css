@@ -431,11 +431,65 @@ h1 {
   left: 0;
   right: 0;
   text-align: center;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  pointer-events: none;
 }
 .core-bottom p {
   font-size: 12px;
   color: #b2cbd0;
-  margin: 0 0 9px;
+  margin: 0;
+}
+.hologram-slider {
+  position: relative;
+  width: min(280px, 70%);
+  height: 28px;
+  border: 1px solid #5edcea88;
+  border-radius: 999px;
+  background: #0a1a22cc;
+  pointer-events: auto;
+  cursor: ew-resize;
+  overflow: hidden;
+  box-shadow: 0 0 18px #5ddfff33;
+}
+.hologram-slider-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 41.6%;
+  background: linear-gradient(90deg, #1d6f7d, #7ef0ffaa);
+  pointer-events: none;
+}
+.hologram-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: 41.6%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 1px solid #e8ffff;
+  background: radial-gradient(circle at 35% 35%, #fff, #4ec4d4 75%);
+  box-shadow: 0 0 12px #5ddfff;
+  pointer-events: none;
+}
+.hologram-slider-value {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font:
+    10px "Aether Mono",
+    monospace;
+  letter-spacing: 0.08em;
+  color: #d7f7ff;
+  pointer-events: none;
+  text-shadow: 0 0 8px #051016;
+}
+.hologram-slider.active,
+.hologram-slider:hover {
+  border-color: #c7fbff;
+  box-shadow: 0 0 22px #5edcea66;
 }
 .scale-indicator {
   position: absolute;

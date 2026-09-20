@@ -24,7 +24,7 @@ document.querySelector("#app")!.innerHTML = `
  <div class="workspace-grid">
   <aside class="side-stack"><section class="instrument"><div class="instrument-title"><span>REACTOR OUTPUT</span><span class="tiny">SIM</span></div><div class="big">4.82 <small>GW</small></div><svg class="energy-chart" viewBox="0 0 230 60" preserveAspectRatio="none" aria-label="Simulated reactor output"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#80e5ec" stop-opacity=".2"/><stop offset="1" stop-color="#80e5ec" stop-opacity="0"/></linearGradient></defs><path d="M0 45 15 45 22 34 36 38 42 18 51 34 66 31 77 35 85 15 94 29 111 26 123 30 135 17 142 25 156 21 165 28 177 12 187 23 205 18 217 22 230 10V60H0Z" fill="url(#fill)"/><path d="M0 45 15 45 22 34 36 38 42 18 51 34 66 31 77 35 85 15 94 29 111 26 123 30 135 17 142 25 156 21 165 28 177 12 187 23 205 18 217 22 230 10" fill="none" stroke="#80cbd6" stroke-width="1.2"/></svg><div class="metric"><span>Core stability</span><b>98.6%</b></div></section>
   <section class="instrument"><div class="instrument-title"><span>SYSTEM INTEGRITY</span><span class="tiny">LIVE</span></div><div class="metric"><span>Rendering</span><b id="render-label">Initializing</b></div><div class="meter"><span id="render-meter"></span></div><div class="metric"><span>Hand tracking</span><b id="tracking-label">Offline</b></div><div class="metric"><span>Processing</span><b>On device</b></div><div class="metric"><span>Quality</span><b id="quality-label">Adaptive</b></div></section></aside>
-  <section class="core-stage" aria-label="Interactive hologram"><div class="scene" id="scene"></div><div class="core-top">HOLOGRAPHIC OBJECT / <span id="object-code">ARC–001</span></div><button class="reactor-control" id="core" data-target="core" aria-label="Inspect reactor"><span class="core-caption">NEURAL CORE</span><span class="core-word">AETHER</span><span class="core-id">SYNCHRONIZED · READY</span></button><nav class="orbit-menu" aria-label="Circular hologram menu">${[["core-module", "CORE", "-90deg"], ["globe", "ATLAS", "0deg"], ["scanner", "SCAN", "90deg"], ["systems", "SYS", "180deg"]].map(([id, label, a], i) => `<button class="orbit-node${i === 0 ? " active" : ""}" data-target="${id}" data-module-index="${i}" style="--a:${a}">${label}</button>`).join("")}</nav><div class="scale-indicator" id="scale" hidden><span>1.00×</span></div><div class="core-bottom"><p id="object-title">Arc reactor</p><span class="tiny" id="object-hint">PINCH TO INSPECT · TWO HANDS TO RESIZE</span></div></section>
+  <section class="core-stage" aria-label="Interactive hologram"><div class="scene" id="scene"></div><div class="core-top">HOLOGRAPHIC OBJECT / <span id="object-code">ARC–001</span></div><button class="reactor-control" id="core" data-target="core" aria-label="Inspect reactor"><span class="core-caption">NEURAL CORE</span><span class="core-word">AETHER</span><span class="core-id">SYNCHRONIZED · READY</span></button><nav class="orbit-menu" aria-label="Circular hologram menu">${[["core-module", "CORE", "-90deg"], ["globe", "ATLAS", "0deg"], ["scanner", "SCAN", "90deg"], ["systems", "SYS", "180deg"]].map(([id, label, a], i) => `<button class="orbit-node${i === 0 ? " active" : ""}" data-target="${id}" data-module-index="${i}" style="--a:${a}">${label}</button>`).join("")}</nav><div class="scale-indicator" id="scale" hidden><span>1.00×</span></div><div class="core-bottom"><p id="object-title">Arc reactor</p><div class="hologram-slider" id="hologram-slider" role="slider" aria-label="Hologram scale" aria-valuemin="50" aria-valuemax="170" aria-valuenow="100" data-target="hologram-scale"><span class="hologram-slider-fill" id="hologram-slider-fill"></span><span class="hologram-slider-thumb" id="hologram-slider-thumb" aria-hidden="true"></span><span class="hologram-slider-value" id="hologram-slider-value">1.00×</span></div><span class="tiny" id="object-hint">PINCH CORE TO INSPECT · SLIDE TO SCALE · TWO HANDS TO RESIZE</span></div></section>
   <aside class="side-stack"><section class="instrument"><div class="instrument-title"><span>PROXIMITY SCANNER</span><span class="tiny">SIM</span></div><div class="radar"><div class="radar-sweep"></div><i class="radar-dot" style="left:64%;top:32%"></i><i class="radar-dot" style="left:28%;top:62%"></i><i class="radar-dot" style="left:55%;top:73%"></i></div><div class="radar-label"><span>SECTOR 07</span><span>3 SIGNALS</span></div></section><section class="instrument"><div class="instrument-title"><span>NEURAL LINK</span><span class="tiny" id="link-mode">LOCAL</span></div><div class="signal-bars">${Array.from({ length: 34 }, (_, i) => `<i style="--h:${8 + Math.sin(i * 1.7) ** 2 * 25}px"></i>`).join("")}</div><div class="readout" style="margin-top:15px">Awaiting your next move.<br><em id="gesture-label">Mouse preview available</em></div></section></aside>
  </div>
  <section class="module-section" aria-label="Holographic modules"><div class="section-row"><div class="eyebrow">CONNECTED MODULES <span style="color:#4f7582">/ 04</span></div><div class="carousel-nav"><span>SWIPE TO EXPLORE</span><button class="arrow" id="previous" aria-label="Previous module" data-target="previous">←</button><span id="module-count">01 / 04</span><button class="arrow" id="next" aria-label="Next module" data-target="next">→</button></div></div><div class="modules">
@@ -406,6 +406,45 @@ tracker.onError = (message) => {
   setMode("standby");
   toast(message);
 };
+function setHologramScale(scale: number) {
+  if (!scene) return;
+  scene.scale = Math.max(0.5, Math.min(1.7, scale));
+  const pct = ((scene.scale - 0.5) / 1.2) * 100;
+  $("hologram-slider-fill").style.width = `${pct}%`;
+  $("hologram-slider-thumb").style.left = `${pct}%`;
+  $("hologram-slider-value").textContent = `${scene.scale.toFixed(2)}×`;
+  $("hologram-slider").setAttribute(
+    "aria-valuenow",
+    String(Math.round(scene.scale * 100)),
+  );
+  $("scale").hidden = false;
+  $("scale").querySelector("span")!.textContent = `${scene.scale.toFixed(2)}×`;
+  $("inspection-scale").textContent = `${scene.scale.toFixed(2)}×`;
+}
+function updateHologramSlider(s: TrackingState) {
+  if (step >= 0 || !scene || !s.visible) return;
+  if (s.state === "ZOOMING") {
+    setHologramScale(scene.scale);
+    return;
+  }
+  const track = $("hologram-slider");
+  const r = track.getBoundingClientRect();
+  if (!r.width) return;
+  const px = s.point.x * innerWidth;
+  const py = s.point.y * innerHeight;
+  const over =
+    px >= r.left - 36 &&
+    px <= r.right + 36 &&
+    py >= r.top - 48 &&
+    py <= r.bottom + 48;
+  if (!over) return;
+  // Open hand or light pinch: slide like a physical slider under the reactor.
+  if (s.pinch > 0.35 || s.state === "HOVERING" || s.state === "IDLE") {
+    const local = clamp((px - r.left) / r.width, 0, 1);
+    setHologramScale(0.5 + local * 1.2);
+    track.classList.add("active");
+  }
+}
 function applyState(s: TrackingState, time: number) {
   $("pointer").style.transform =
     `translate(${s.point.x * innerWidth}px,${s.point.y * innerHeight}px)`;
@@ -443,13 +482,13 @@ function applyState(s: TrackingState, time: number) {
       selectModule(activeModule + (event.direction === "right" ? 1 : -1));
     if (event.type === "zoom" && scene) {
       if (!wasZoom) zoomStartScale = scene.scale;
-      scene.scale = Math.max(0.5, Math.min(1.7, zoomStartScale * event.scale!));
-      $("scale").querySelector("span")!.textContent =
-        scene.scale.toFixed(2) + "×";
+      setHologramScale(zoomStartScale * event.scale!);
     }
   }
   wasZoom = s.state === "ZOOMING";
-  $("scale").hidden = !wasZoom;
+  if (!wasZoom && step < 0) updateHologramSlider(s);
+  if (!wasZoom && s.state !== "HOVERING" && s.hover !== "hologram-scale")
+    $("hologram-slider").classList.remove("active");
   $("gesture-label").textContent = s.visible
     ? s.state.toLowerCase().replaceAll("_", " ")
     : "Raise your hand";
@@ -513,7 +552,7 @@ function inspect() {
 function reset() {
   interaction.reset();
   if (scene) {
-    scene.scale = 1;
+    setHologramScale(1);
     scene.rotationSpeed = 1;
   }
   selectModule(0);
@@ -646,6 +685,26 @@ $("command").onsubmit = async (e) => {
 };
 // Pointer and keyboard fallback remain available independently of the camera.
 let mouseGrab: string | null = null;
+let slidingScale = false;
+function scaleFromClientX(clientX: number) {
+  const r = $("hologram-slider").getBoundingClientRect();
+  if (!r.width) return;
+  setHologramScale(0.5 + clamp((clientX - r.left) / r.width, 0, 1) * 1.2);
+}
+$("hologram-slider").addEventListener("pointerdown", (e) => {
+  slidingScale = true;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  scaleFromClientX(e.clientX);
+});
+$("hologram-slider").addEventListener("pointermove", (e) => {
+  if (slidingScale) scaleFromClientX(e.clientX);
+});
+$("hologram-slider").addEventListener("pointerup", () => {
+  slidingScale = false;
+});
+$("hologram-slider").addEventListener("pointercancel", () => {
+  slidingScale = false;
+});
 document.addEventListener("pointerdown", (e) => {
   if (mode !== "mouse") return;
   const target = (e.target as HTMLElement).closest<HTMLElement>(
@@ -683,11 +742,7 @@ $("core").addEventListener(
   "wheel",
   (e) => {
     e.preventDefault();
-    if (scene)
-      scene.scale = Math.max(
-        0.5,
-        Math.min(1.7, scene.scale - e.deltaY * 0.001),
-      );
+    if (scene) setHologramScale(scene.scale - e.deltaY * 0.001);
   },
   { passive: false },
 );
