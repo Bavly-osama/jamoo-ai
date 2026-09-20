@@ -25,7 +25,7 @@ export class GeminiCommandService {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(15000),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "AI unavailable.");
