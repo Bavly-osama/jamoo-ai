@@ -324,17 +324,17 @@ export class GestureEngine {
     } else this.openSince = null;
   }
   private detectSwipe(t: number, events: GestureEvent[]) {
-    if (t - this.lastSwipe < 700) return;
-    if (!this.swipeStart || t - this.swipeStart.t > 450)
+    if (t - this.lastSwipe < 420) return;
+    if (!this.swipeStart || t - this.swipeStart.t > 550)
       this.swipeStart = { p: { ...this.point }, t };
     const dx = this.point.x - this.swipeStart.p.x,
       dy = this.point.y - this.swipeStart.p.y,
       elapsed = t - this.swipeStart.t;
     if (
-      elapsed >= 80 &&
-      Math.abs(dx) > 0.16 &&
-      Math.abs(dx) / (elapsed / 1000) > 0.55 &&
-      Math.abs(dy) < 0.09
+      elapsed >= 60 &&
+      Math.abs(dx) > 0.07 &&
+      Math.abs(dx) / (elapsed / 1000) > 0.28 &&
+      Math.abs(dy) < 0.16
     ) {
       events.push({ type: "swipe", direction: dx > 0 ? "right" : "left" });
       this.lastSwipe = t;

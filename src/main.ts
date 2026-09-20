@@ -27,7 +27,7 @@ document.querySelector("#app")!.innerHTML = `
   <section class="core-stage" aria-label="Interactive hologram"><div class="scene" id="scene"></div><div class="core-top">HOLOGRAPHIC OBJECT / <span id="object-code">ARC–001</span></div><button class="reactor-control" id="core" data-target="core" aria-label="Inspect reactor"><span class="core-caption">NEURAL CORE</span><span class="core-word">AETHER</span><span class="core-id">SYNCHRONIZED · READY</span></button><nav class="orbit-menu" aria-label="Circular hologram menu">${[["core-module", "CORE", "-90deg"], ["globe", "ATLAS", "0deg"], ["scanner", "SCAN", "90deg"], ["systems", "SYS", "180deg"]].map(([id, label, a], i) => `<button class="orbit-node${i === 0 ? " active" : ""}" data-target="${id}" data-module-index="${i}" style="--a:${a}">${label}</button>`).join("")}</nav><div class="scale-indicator" id="scale" hidden><span>1.00×</span></div><div class="core-bottom"><p id="object-title">Arc reactor</p><div class="hologram-slider" id="hologram-slider" role="slider" aria-label="Hologram scale" aria-valuemin="50" aria-valuemax="170" aria-valuenow="100" data-target="hologram-scale"><span class="hologram-slider-fill" id="hologram-slider-fill"></span><span class="hologram-slider-thumb" id="hologram-slider-thumb" aria-hidden="true"></span><span class="hologram-slider-value" id="hologram-slider-value">1.00×</span></div><span class="tiny" id="object-hint">PINCH CORE TO INSPECT · SLIDE TO SCALE · TWO HANDS TO RESIZE</span></div></section>
   <aside class="side-stack"><section class="instrument"><div class="instrument-title"><span>PROXIMITY SCANNER</span><span class="tiny">SIM</span></div><div class="radar"><div class="radar-sweep"></div><i class="radar-dot" style="left:64%;top:32%"></i><i class="radar-dot" style="left:28%;top:62%"></i><i class="radar-dot" style="left:55%;top:73%"></i></div><div class="radar-label"><span>SECTOR 07</span><span>3 SIGNALS</span></div></section><section class="instrument"><div class="instrument-title"><span>NEURAL LINK</span><span class="tiny" id="link-mode">LOCAL</span></div><div class="signal-bars">${Array.from({ length: 34 }, (_, i) => `<i style="--h:${8 + Math.sin(i * 1.7) ** 2 * 25}px"></i>`).join("")}</div><div class="readout" style="margin-top:15px">Awaiting your next move.<br><em id="gesture-label">Mouse preview available</em></div></section></aside>
  </div>
- <section class="module-section" aria-label="Holographic modules"><div class="section-row"><div class="eyebrow">CONNECTED MODULES <span style="color:#4f7582">/ 04</span></div><div class="carousel-nav"><span>SWIPE TO EXPLORE</span><button class="arrow" id="previous" aria-label="Previous module" data-target="previous">←</button><span id="module-count">01 / 04</span><button class="arrow" id="next" aria-label="Next module" data-target="next">→</button></div></div><div class="modules">
+ <section class="module-section" aria-label="Holographic modules"><div class="section-row"><div class="eyebrow">CONNECTED MODULES <span style="color:#4f7582">/ 04</span></div><div class="carousel-nav"><span>SWIPE CARDS</span><button class="arrow" id="previous" aria-label="Previous module" data-target="previous">←</button><span id="module-count">01 / 04</span><button class="arrow" id="next" aria-label="Next module" data-target="next">→</button></div></div><div class="card-slider" id="card-slider"><div class="card-slider-viewport" id="card-slider-viewport"><div class="card-slider-track modules" id="card-slider-track">
  ${[
    ["core-module", "◎", "Arc reactor", "ENERGY SYSTEM", "01"],
    ["globe", "◉", "Orbital atlas", "SPATIAL MAPPING", "02"],
@@ -36,10 +36,10 @@ document.querySelector("#app")!.innerHTML = `
  ]
    .map(
      ([id, icon, title, label, n], i) =>
-       `<button class="module ${i === 0 ? "active" : ""}" id="${id}" data-target="${id}" data-draggable="true"><span class="module-index">${n}</span><span class="module-icon">${icon}</span><div><h3>${title}</h3><p>${label}</p></div></button>`,
+       `<button class="module card-slide ${i === 0 ? "active" : ""}" id="${id}" data-target="${id}" data-module-index="${i}" data-draggable="true"><span class="module-index">${n}</span><span class="module-icon">${icon}</span><div><h3>${title}</h3><p>${label}</p></div></button>`,
    )
    .join("")}
- </div></section>
+ </div></div><div class="card-slider-dots" id="card-slider-dots" aria-hidden="true">${[0, 1, 2, 3].map((i) => `<button type="button" class="card-dot${i === 0 ? " active" : ""}" data-dot="${i}" aria-label="Go to card ${i + 1}"></button>`).join("")}</div><p class="card-slider-hint">Swipe left or right · pinch a card to select</p></div></section>
  <form class="command-bar" id="command"><div class="ai-orb">✦</div><label for="command-input">AETHER AI</label><input id="command-input" maxlength="240" autocomplete="off" placeholder="Try “open system diagnostics”" aria-label="AI command"><button type="submit" id="command-send">Send ↗</button></form>
  <footer class="footer"><div class="footer-left"><span>CONTROL <b id="control-mode">STANDBY</b></span><span>RENDER <b id="fps">—</b></span><span>BUILD <b>1.0.0</b></span></div><div class="privacy">Your camera stays on your device</div></footer></div>
 </main>
@@ -361,10 +361,10 @@ tracker.onResult = (hands, time) => {
   state = engine.update(hands, time, tutorialHit);
   applyState(state, time);
   if (hands.length) {
-    const region = document.querySelector(".modules")!.getBoundingClientRect();
+    const region = $("card-slider").getBoundingClientRect();
     const overCarousel =
-      state.point.y * innerHeight >= region.top &&
-      state.point.y * innerHeight <= region.bottom;
+      state.point.y * innerHeight >= region.top - 20 &&
+      state.point.y * innerHeight <= region.bottom + 20;
     const context =
       step === 2
         ? "tutorial_pinch"
@@ -394,8 +394,8 @@ tracker.onResult = (hands, time) => {
           state &&
           ["IDLE", "HOVERING"].includes(state.state)
         ) {
-          if (d.action === "swipe_right") selectModule(activeModule + 1);
-          if (d.action === "swipe_left") selectModule(activeModule - 1);
+          if (d.action === "swipe_left") selectModule(activeModule + 1);
+          if (d.action === "swipe_right") selectModule(activeModule - 1);
         }
       })
       .catch(() => {});
@@ -478,8 +478,11 @@ function applyState(s: TrackingState, time: number) {
       $("debug").hidden = true;
       if (open) toast("Panel closed.");
     }
-    if (event.type === "swipe" && step < 0)
-      selectModule(activeModule + (event.direction === "right" ? 1 : -1));
+    if (event.type === "swipe" && step < 0) {
+      handCardDrag = null;
+      selectModule(activeModule + (event.direction === "left" ? 1 : -1));
+      $("gesture-label").textContent = "card swipe";
+    }
     if (event.type === "zoom" && scene) {
       if (!wasZoom) zoomStartScale = scene.scale;
       setHologramScale(zoomStartScale * event.scale!);
@@ -487,6 +490,7 @@ function applyState(s: TrackingState, time: number) {
   }
   wasZoom = s.state === "ZOOMING";
   if (!wasZoom && step < 0) updateHologramSlider(s);
+  if (!wasZoom && step < 0) updateHandCardSwipe(s);
   if (!wasZoom && s.state !== "HOVERING" && s.hover !== "hologram-scale")
     $("hologram-slider").classList.remove("active");
   $("gesture-label").textContent = s.visible
@@ -499,11 +503,26 @@ function applyState(s: TrackingState, time: number) {
   );
   tutorial(s, time);
 }
+function syncCardTrack(dragPx = 0) {
+  const track = $("card-slider-track");
+  const viewport = $("card-slider-viewport");
+  const card = document.querySelector<HTMLElement>(".card-slide");
+  const w = card?.offsetWidth ?? Math.min(320, viewport.clientWidth * 0.72);
+  const gap = 16;
+  const pad = Math.max(12, (viewport.clientWidth - w) / 2);
+  const x = pad - activeModule * (w + gap) + dragPx;
+  track.style.transform = `translateX(${x}px)`;
+}
 function selectModule(index: number) {
   activeModule = (index + 4) % 4;
+  $("card-slider").classList.remove("dragging");
+  syncCardTrack(0);
   document
     .querySelectorAll(".module")
     .forEach((el, i) => el.classList.toggle("active", i === activeModule));
+  document.querySelectorAll(".card-dot").forEach((el, i) => {
+    el.classList.toggle("active", i === activeModule);
+  });
   $("module-count").textContent = `0${activeModule + 1} / 04`;
   if (scene)
     scene.focus = (["core", "globe", "scanner", "systems"] as const)[
@@ -598,6 +617,104 @@ document.querySelectorAll<HTMLElement>("[data-module-index]").forEach((el) => {
 );
 $("previous").onclick = () => selectModule(activeModule - 1);
 $("next").onclick = () => selectModule(activeModule + 1);
+syncCardTrack(0);
+window.addEventListener("resize", () => syncCardTrack(0));
+document.querySelectorAll<HTMLElement>(".card-dot").forEach((dot) => {
+  dot.onclick = () => selectModule(Number(dot.dataset.dot));
+});
+
+let cardDrag: {
+  x: number;
+  startSlide: number;
+  moved: boolean;
+} | null = null;
+let handCardDrag: { x: number; startSlide: number } | null = null;
+const cardViewport = $("card-slider-viewport");
+const cardStepPx = () => {
+  const card = document.querySelector<HTMLElement>(".card-slide");
+  return (card?.offsetWidth ?? 280) + 16;
+};
+cardViewport.addEventListener("pointerdown", (e) => {
+  if ((e.target as HTMLElement).closest(".arrow")) return;
+  cardDrag = {
+    x: e.clientX,
+    startSlide: activeModule,
+    moved: false,
+  };
+  $("card-slider").classList.add("dragging");
+  cardViewport.setPointerCapture(e.pointerId);
+});
+cardViewport.addEventListener("pointermove", (e) => {
+  if (!cardDrag) return;
+  const dx = e.clientX - cardDrag.x;
+  if (Math.abs(dx) > 8) cardDrag.moved = true;
+  syncCardTrack(dx);
+});
+function endCardDrag(clientX: number) {
+  if (!cardDrag) return;
+  const dx = clientX - cardDrag.x;
+  $("card-slider").classList.remove("dragging");
+  const threshold = Math.min(90, cardStepPx() * 0.22);
+  if (cardDrag.moved && Math.abs(dx) > threshold) {
+    selectModule(cardDrag.startSlide + (dx < 0 ? 1 : -1));
+  } else {
+    selectModule(cardDrag.startSlide);
+  }
+  cardDrag = null;
+}
+cardViewport.addEventListener("pointerup", (e) => endCardDrag(e.clientX));
+cardViewport.addEventListener("pointercancel", (e) => endCardDrag(e.clientX));
+cardViewport.addEventListener(
+  "click",
+  (e) => {
+    if (cardDrag?.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },
+  true,
+);
+
+function updateHandCardSwipe(s: TrackingState) {
+  if (step >= 0 || !s.visible) {
+    handCardDrag = null;
+    return;
+  }
+  const region = $("card-slider").getBoundingClientRect();
+  const py = s.point.y * innerHeight;
+  const px = s.point.x * innerWidth;
+  const over =
+    py >= region.top - 30 &&
+    py <= region.bottom + 30 &&
+    px >= region.left - 40 &&
+    px <= region.right + 40;
+  const open =
+    s.pinch > 0.4 &&
+    !["PINCHED", "DRAGGING", "ZOOMING", "PINCH_STARTING"].includes(s.state);
+  if (over && open) {
+    if (!handCardDrag) {
+      handCardDrag = { x: px, startSlide: activeModule };
+      $("card-slider").classList.add("dragging");
+    }
+    const dx = px - handCardDrag.x;
+    syncCardTrack(dx);
+    const threshold = Math.min(100, cardStepPx() * 0.28);
+    if (Math.abs(dx) > threshold) {
+      const next = handCardDrag.startSlide + (dx < 0 ? 1 : -1);
+      handCardDrag = null;
+      $("card-slider").classList.remove("dragging");
+      selectModule(next);
+    }
+  } else if (handCardDrag) {
+    const dx = px - handCardDrag.x;
+    handCardDrag = null;
+    $("card-slider").classList.remove("dragging");
+    const threshold = Math.min(80, cardStepPx() * 0.2);
+    if (Math.abs(dx) > threshold)
+      selectModule(activeModule + (dx < 0 ? 1 : -1));
+    else selectModule(activeModule);
+  }
+}
 $("reset").onclick = reset;
 $("rotate").onclick = () => {
   if (!scene) return;
