@@ -111,10 +111,23 @@ describe("temporal interaction", () => {
   });
   it("accepts a partial pinch under the forgiving enter threshold", () => {
     const e = new GestureEngine();
+    e.openBaseline = 0.9;
     const events = [];
     for (let i = 0; i < 8; i++)
       events.push(
-        ...e.update([hand(0.5, 0.5, i < 2 ? 0.8 : 0.32)], i * 40, "tutorial")
+        ...e.update([hand(0.5, 0.5, i < 2 ? 0.8 : 0.4)], i * 40, "tutorial")
+          .events,
+      );
+    expect(events.some((x) => x.type === "click")).toBe(true);
+  });
+  it("detects relative pinch from an open-hand baseline", () => {
+    const e = new GestureEngine();
+    e.openBaseline = 1;
+    e.enter = 0.52;
+    const events = [];
+    for (let i = 0; i < 10; i++)
+      events.push(
+        ...e.update([hand(0.5, 0.5, i < 2 ? 1 : 0.5)], i * 40, "tutorial")
           .events,
       );
     expect(events.some((x) => x.type === "click")).toBe(true);

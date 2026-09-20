@@ -18,7 +18,7 @@ export class CalibrationManager {
     if (this.scales.length < 300) this.scales.push(scale);
   }
   finish(facing: string): Calibration {
-    const enter = Math.min(0.4, Math.max(0.3, this.minPinch + 0.1));
+    const enter = Math.min(0.55, Math.max(0.42, this.minPinch + 0.12));
     return {
       enter,
       exit: enter + 0.16,
@@ -38,7 +38,7 @@ export class CalibrationManager {
       return c &&
         Number.isFinite(c.enter) &&
         c.enter >= 0.15 &&
-        c.enter <= 0.45 &&
+        c.enter <= 0.6 &&
         c.exit > c.enter &&
         Date.now() - c.created < 30 * 86400000
         ? c

@@ -790,24 +790,30 @@ h1 {
   transition: width 0.4s;
 }
 .tutorial-target {
-  width: min(180px, 70vw);
-  height: 96px;
+  width: min(200px, 78vw);
+  height: 110px;
   margin: 20px auto;
   border: 1px dashed var(--cyan);
   display: grid;
   place-items: center;
   color: var(--cyan);
   font-size: 13px;
-  background: #21414d;
+  background:
+    linear-gradient(
+      90deg,
+      #3d8f9f88 calc(var(--pinch, 0) * 100%),
+      #21414d calc(var(--pinch, 0) * 100%)
+    );
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
     background 0.15s;
+  position: relative;
+  overflow: hidden;
 }
 .tutorial-target.hovered,
 .tutorial-target:hover {
   border-color: #c7fbff;
-  background: #2a5562;
   box-shadow: 0 0 22px #5edcea55;
 }
 .camera-preview {

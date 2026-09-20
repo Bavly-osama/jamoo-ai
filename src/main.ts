@@ -3,6 +3,7 @@ import { CameraController, cameraError } from "./tracking/CameraController";
 import { HandTracker } from "./tracking/HandTracker";
 import {
   GestureEngine,
+  clamp,
   distance,
   type Hand,
   type TrackingState,
@@ -42,7 +43,7 @@ document.querySelector("#app")!.innerHTML = `
  <form class="command-bar" id="command"><div class="ai-orb">✦</div><label for="command-input">AETHER AI</label><input id="command-input" maxlength="240" autocomplete="off" placeholder="Try “open system diagnostics”" aria-label="AI command"><button type="submit" id="command-send">Send ↗</button></form>
  <footer class="footer"><div class="footer-left"><span>CONTROL <b id="control-mode">STANDBY</b></span><span>RENDER <b id="fps">—</b></span><span>BUILD <b>1.0.0</b></span></div><div class="privacy">Your camera stays on your device</div></footer></div>
 </main>
-<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden>Pinch here</button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
+<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden>Pinch here<br><small style="opacity:.7">or tap</small></button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
 <div class="camera-preview" id="camera-preview" hidden><video id="video" muted playsinline></video><canvas id="landmarks"></canvas><span id="camera-caption">LOCAL CAMERA</span></div><div id="pointer" class="pointer" style="opacity:0"></div>
 <aside class="drawer" id="inspection" hidden aria-label="Object inspection"><button class="close" id="close-inspection" aria-label="Close inspection" data-target="close-inspection">×</button><div class="eyebrow">OBJECT INSPECTION</div><h2 id="inspection-title">Arc reactor / ARC–001</h2><p id="inspection-description">A self-contained holographic energy core. Spread two pinched hands to expand the projection.</p><div class="metric"><span>Projection scale</span><b id="inspection-scale">1.00×</b></div><div class="metric"><span>Rotation</span><b id="rotation-label">Active</b></div><button class="utility" id="rotate" data-target="rotate">Pause rotation</button><button class="utility" id="reset" data-target="reset">Reset workspace</button><p>Module tiles can be moved by pinching and holding. Release your pinch to place them.</p></aside>
 <aside class="drawer" id="debug" hidden aria-label="Developer diagnostics"><button class="close" id="close-debug" aria-label="Close diagnostics" data-target="close-debug">×</button><div class="eyebrow">DEVELOPER VIEW / SHIFT + D</div><h2>System diagnostics</h2><pre id="debug-data"></pre><label>minCutoff<input type="range" id="minCutoff" min=".5" max="5" step=".1" value="1.6"></label><label>beta<input type="range" id="beta" min="0" max="2" step=".05" value=".35"></label><label>dCutoff<input type="range" id="dCutoff" min=".5" max="3" step=".1" value="1"></label><label>Show landmarks<input type="checkbox" id="show-landmarks"></label><label>AI gesture fallback<input type="checkbox" id="ai-fallback"></label><button class="utility" id="recalibrate">Recalibrate hand</button><button class="utility" id="switch-camera">Switch front / back camera</button><button class="utility" id="restart-camera">Restart camera</button><p>Hand confidence is the model’s handedness score; detection and presence use separate internal thresholds. Reactor and scanner values are simulated.</p></aside><div class="toast" id="toast" role="status" hidden></div>`;
@@ -175,10 +176,11 @@ async function startCamera() {
     engine.smoother.reset();
     const saved = CalibrationManager.load();
     // Prefer a forgiving live default during onboarding; saved thresholds apply after completion.
-    engine.enter = 0.4;
-    engine.exit = 0.56;
+    engine.enter = 0.52;
+    engine.exit = 0.7;
+    engine.openBaseline = 0.9;
     if (saved && saved.facing === camera.facing) {
-      engine.enter = Math.max(saved.enter, 0.34);
+      engine.enter = Math.max(saved.enter, 0.45);
       engine.exit = Math.max(saved.exit, engine.enter + 0.14);
     }
     calibration = new CalibrationManager();
@@ -253,56 +255,85 @@ function advance() {
     toast("You’re connected. Move, pinch, hold, release.");
   }
 }
+function nearTutorial(point: { x: number; y: number }) {
+  const tile = $("tutorial-target");
+  if (tile.hidden) return false;
+  const r = tile.getBoundingClientRect();
+  if (r.width === 0) return false;
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  return Math.hypot(point.x * innerWidth - cx, point.y * innerHeight - cy) < 150;
+}
+function tutorialHit(point: { x: number; y: number }) {
+  const direct = interaction.hit(point.x * innerWidth, point.y * innerHeight);
+  if (direct) return direct;
+  if ((step === 2 || step === 3) && nearTutorial(point)) return "tutorial";
+  return null;
+}
 function tutorial(s: TrackingState, t: number) {
   if (step < 0) return;
   const h = lastHands.find((h) => h.id === s.primaryId);
-  if (!h || !s.visible || performance.now() - lastResult > 150) return;
+  if (!h || !s.visible || performance.now() - lastResult > 200) return;
   calibration.observe(
     s.raw.x,
     s.pinch,
     distance(h.landmarks[0], h.landmarks[9]),
   );
-  // Adapt enter live from the open-hand baseline so partial pinches still count.
-  if (s.pinch > 0.6)
-    engine.enter = Math.min(engine.enter, Math.max(0.34, s.pinch * 0.62));
+  if (s.pinch > 0.55)
+    engine.openBaseline = Math.max(engine.openBaseline, s.pinch);
+  const tile = $("tutorial-target");
+  const progress = clamp(
+    1 - s.pinch / Math.max(0.35, engine.openBaseline),
+    0,
+    1,
+  );
+  if (!tile.hidden) {
+    tile.style.setProperty("--pinch", String(progress));
+    tile.classList.toggle(
+      "hovered",
+      s.hover === "tutorial" ||
+        nearTutorial(s.point) ||
+        s.state === "PINCH_STARTING" ||
+        s.state === "PINCHED",
+    );
+  }
   if (step === 0) {
-    if (s.pinch > 0.5 && s.confidence >= 0.65) {
+    if (s.pinch > 0.5 && s.confidence >= 0.55) {
       openSince ||= t;
-      if (t - openSince > 400) advance();
+      if (t - openSince > 350) advance();
     } else openSince = 0;
   } else if (step === 1) {
     moveMin = Math.min(moveMin, s.raw.x);
     moveMax = Math.max(moveMax, s.raw.x);
-    if (moveMax - moveMin > 0.2) advance();
+    if (moveMax - moveMin > 0.18) advance();
   } else if (step === 2) {
-    const tile = $("tutorial-target");
-    tile.classList.toggle("hovered", s.hover === "tutorial" || s.state === "PINCH_STARTING");
-    if (s.events.some((e) => e.type === "click" && e.target === "tutorial"))
+    const onTile = s.hover === "tutorial" || nearTutorial(s.point);
+    if (
+      s.events.some((e) => e.type === "click" && e.target === "tutorial") ||
+      (onTile &&
+        (s.state === "PINCHED" || s.state === "DRAGGING") &&
+        s.pinch < engine.enter)
+    )
       advance();
-    else if (s.state === "HOVERING" && s.hover === "tutorial")
-      status("Good — now pinch thumb and index together.");
-    else if (s.state === "PINCH_STARTING" || s.state === "PINCHED")
-      status(
-        s.hover === "tutorial" || interaction.selected === "tutorial"
-          ? "Hold the pinch…"
-          : "Keep the glow on “Pinch here”, then pinch.",
-      );
-    else if (s.pinch < 0.5)
-      status("Almost — close thumb and index a bit more over the tile.");
+    else if (onTile && (s.state === "PINCH_STARTING" || progress > 0.35))
+      status("Good — keep closing thumb and index…");
+    else if (onTile) status("Tile locked. Pinch thumb + index together.");
+    else if (progress > 0.35)
+      status("Pinching — move the glow onto “Pinch here”.");
     else status("Move the glow onto “Pinch here”, then pinch.");
   } else if (step === 3) {
     if (s.events.some((e) => e.type === "drop")) tutorialPinched = true;
     if (
       tutorialPinched &&
       s.events.some((e) => e.type === "drag" && e.target === "tutorial") &&
-      distance(s.point, dragOrigin) > 0.08
+      distance(s.point, dragOrigin) > 0.06
     )
       advance();
   } else if (step === 4) {
     const z = s.events.find((e) => e.type === "zoom");
     if (z) {
       zoomSeen = true;
-      if (z.scale! > 1.18) advance();
+      if (z.scale! > 1.15) advance();
     }
   }
   if (step >= 0 && t - stepSince > 20000 && step === 4 && !zoomSeen)
@@ -313,9 +344,7 @@ function tutorial(s: TrackingState, t: number) {
 tracker.onResult = (hands, time) => {
   lastHands = hands;
   lastResult = performance.now();
-  state = engine.update(hands, time, (point) =>
-    interaction.hit(point.x * innerWidth, point.y * innerHeight),
-  );
+  state = engine.update(hands, time, tutorialHit);
   applyState(state, time);
   if (hands.length) {
     const region = document.querySelector(".modules")!.getBoundingClientRect();
@@ -337,19 +366,11 @@ tracker.onResult = (hands, time) => {
         context,
         state.pinch,
         !["IDLE", "HOVERING", "PINCH_STARTING"].includes(state.state),
-        state.hover === "tutorial" ||
-          interaction.hit(
-            state.point.x * innerWidth,
-            state.point.y * innerHeight,
-          ) === "tutorial",
+        state.hover === "tutorial" || nearTutorial(state.point),
       )
       .then((d) => {
         if (!d || d.confidence < 0.8) return;
-        if (
-          tutorialStep === 2 &&
-          step === 2 &&
-          d.action === "pinch_click"
-        ) {
+        if (tutorialStep === 2 && step === 2 && d.action === "pinch_click") {
           advance();
           return;
         }
@@ -490,6 +511,9 @@ function toggleDebug() {
   $("debug").hidden = !$("debug").hidden;
 }
 $("enable").onclick = () => void startCamera();
+$("tutorial-target").onclick = () => {
+  if (step === 2) advance();
+};
 $("preview").onclick = () => {
   $("welcome").hidden = true;
   setMode("mouse");

@@ -18,7 +18,7 @@ export class GeminiGestureResolver {
       return null;
     }
     if (context === "tutorial_pinch") {
-      if (!overTarget || pinch > 0.48) {
+      if (!overTarget || pinch > 0.55) {
         this.start = undefined;
         return null;
       }
