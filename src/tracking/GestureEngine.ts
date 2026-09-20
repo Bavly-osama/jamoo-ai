@@ -112,14 +112,14 @@ export class GestureEngine {
       typeof hitInput === "function" ? hitInput(point) : hitInput;
     const valid = hands.filter(
       (h) =>
-        h.confidence >= 0.55 &&
+        h.confidence >= 0.35 &&
         h.landmarks.length === 21 &&
         h.landmarks.every((p) => Number.isFinite(p.x + p.y + p.z)),
     );
     const hand = valid.find((h) => h.id === this.primaryId) ?? valid[0];
     if (!hand) {
       const age = t - this.lastReliable;
-      if (age > 350) {
+      if (age > 480) {
         if (this.held) {
           events.push({ type: "drop", target: this.target ?? undefined });
           this.requireOpen = true;
@@ -136,15 +136,18 @@ export class GestureEngine {
       }
       return this.snapshot(
         events,
-        age < 550,
-        clamp(1 - (age - 350) / 200),
+        age < 700,
+        clamp(1 - (age - 480) / 220),
         age,
       );
     }
     const changed = this.primaryId !== hand.id;
-    if (changed || t - this.lastReliable > 550) {
+    // Only hard-reset smoother after a real gap — not on brief Left/Right flaps.
+    if (t - this.lastReliable > 750) {
       this.smoother.reset();
       this.velocity = { x: 0, y: 0 };
+      this.swipeStart = undefined;
+    } else if (changed) {
       this.swipeStart = undefined;
     }
     if (changed && this.held) {

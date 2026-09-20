@@ -94,6 +94,7 @@ let setupGeneration = 0,
   state: TrackingState | undefined,
   lastHands: Hand[] = [],
   lastResult = -Infinity,
+  lastHandSeen = -Infinity,
   lastFrame = performance.now(),
   lastDebug = 0,
   zoomStartScale = 1,
@@ -142,6 +143,7 @@ function stopCamera() {
   tracker.dispose();
   lastHands = [];
   lastResult = -Infinity;
+  lastHandSeen = -Infinity;
   engine.update([], performance.now() + 1000, null);
   interaction.release();
   $("pointer").style.opacity = "0";
@@ -356,11 +358,24 @@ function tutorial(s: TrackingState, t: number) {
   }
 }
 tracker.onResult = (hands, time) => {
-  lastHands = hands;
-  lastResult = performance.now();
-  state = engine.update(hands, time, tutorialHit);
-  applyState(state, time);
+  const now = performance.now();
+  lastResult = now;
+  // Hold the last good pose briefly so one missed frame does not flash the skeleton off.
   if (hands.length) {
+    lastHands = hands;
+    lastHandSeen = now;
+  } else if (now - lastHandSeen > 450) {
+    lastHands = [];
+  }
+  const stableHands =
+    hands.length > 0
+      ? hands
+      : now - lastHandSeen < 400
+        ? lastHands
+        : [];
+  state = engine.update(stableHands, time, tutorialHit);
+  applyState(state, time);
+  if (stableHands.length) {
     const region = $("card-slider").getBoundingClientRect();
     const overCarousel =
       state.point.y * innerHeight >= region.top - 20 &&
@@ -907,6 +922,35 @@ const landmarkCanvas = $<HTMLCanvasElement>("landmarks"),
   landmarkCtx = landmarkCanvas.getContext("2d")!,
   handOverlay = $<HTMLCanvasElement>("hand-overlay"),
   overlayCtx = handOverlay.getContext("2d")!;
+let displayHands: Hand[] = [];
+function blendDisplayHands(hands: Hand[]) {
+  if (!hands.length) {
+    displayHands = [];
+    return displayHands;
+  }
+  if (
+    !displayHands.length ||
+    displayHands.length !== hands.length ||
+    displayHands[0]?.id !== hands[0]?.id
+  ) {
+    displayHands = hands.map((h) => ({
+      ...h,
+      landmarks: h.landmarks.map((p) => ({ ...p })),
+    }));
+    return displayHands;
+  }
+  for (let i = 0; i < hands.length; i++) {
+    const src = hands[i];
+    const dst = displayHands[i];
+    dst.confidence = src.confidence;
+    for (let j = 0; j < 21; j++) {
+      dst.landmarks[j].x += 0.45 * (src.landmarks[j].x - dst.landmarks[j].x);
+      dst.landmarks[j].y += 0.45 * (src.landmarks[j].y - dst.landmarks[j].y);
+      dst.landmarks[j].z += 0.45 * (src.landmarks[j].z - dst.landmarks[j].z);
+    }
+  }
+  return displayHands;
+}
 function paintHandSkeleton(
   target: CanvasRenderingContext2D,
   width: number,
@@ -914,16 +958,20 @@ function paintHandSkeleton(
   screenSpace: boolean,
 ) {
   target.clearRect(0, 0, width, height);
-  if (!lastHands.length || performance.now() - lastResult > 250) return;
-  for (const h of lastHands) {
+  const age = performance.now() - lastHandSeen;
+  if (!lastHands.length || age > 500) return;
+  const hands = blendDisplayHands(lastHands);
+  const alpha = age > 320 ? clamp(1 - (age - 320) / 180) : 1;
+  for (const h of hands) {
     const pts = h.landmarks.map((p) => {
       const x = engine.mirrored ? 1 - p.x : p.x;
       return { x: x * width, y: p.y * height };
     });
+    target.globalAlpha = alpha;
     target.lineWidth = screenSpace ? Math.max(2, width * 0.0025) : 2.5;
-    target.strokeStyle = "rgba(126, 240, 255, 0.85)";
+    target.strokeStyle = "rgba(126, 240, 255, 0.9)";
     target.shadowColor = "#5ddfff";
-    target.shadowBlur = screenSpace ? 8 : 4;
+    target.shadowBlur = screenSpace ? 6 : 3;
     for (const [a, b] of HAND_CONNECTIONS) {
       target.beginPath();
       target.moveTo(pts[a].x, pts[a].y);
@@ -945,31 +993,42 @@ function paintHandSkeleton(
       target.fill();
     }
   }
+  target.globalAlpha = 1;
 }
 function drawLandmarks() {
   const preview = $("camera-preview");
   if (!preview.hidden) {
     const w = Math.max(160, Math.round(preview.clientWidth) || 320);
     const h = Math.max(120, Math.round(preview.clientHeight) || 240);
-    if (landmarkCanvas.width !== w || landmarkCanvas.height !== h) {
+    if (
+      Math.abs(landmarkCanvas.width - w) > 4 ||
+      Math.abs(landmarkCanvas.height - h) > 4
+    ) {
       landmarkCanvas.width = w;
       landmarkCanvas.height = h;
     }
-    paintHandSkeleton(landmarkCtx, w, h, false);
+    paintHandSkeleton(
+      landmarkCtx,
+      landmarkCanvas.width,
+      landmarkCanvas.height,
+      false,
+    );
   } else {
     landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
   }
   const forceDebug =
     !$("debug").hidden && $<HTMLInputElement>("show-landmarks").checked;
   if (running || forceDebug) {
+    const w = innerWidth;
+    const h = innerHeight;
     if (
-      handOverlay.width !== innerWidth ||
-      handOverlay.height !== innerHeight
+      Math.abs(handOverlay.width - w) > 4 ||
+      Math.abs(handOverlay.height - h) > 4
     ) {
-      handOverlay.width = innerWidth;
-      handOverlay.height = innerHeight;
+      handOverlay.width = w;
+      handOverlay.height = h;
     }
-    paintHandSkeleton(overlayCtx, innerWidth, innerHeight, true);
+    paintHandSkeleton(overlayCtx, handOverlay.width, handOverlay.height, true);
   } else {
     overlayCtx.clearRect(0, 0, handOverlay.width, handOverlay.height);
   }
@@ -984,8 +1043,10 @@ function frame(t: number) {
   perf.update(t);
   if (running) {
     void tracker.tick(video, t);
-    if (t - lastResult > 110) {
-      state = engine.update([], t, null);
+    if (t - lastResult > 180) {
+      const held =
+        t - lastHandSeen < 400 && lastHands.length ? lastHands : [];
+      state = engine.update(held, t, null);
       applyState(state, t);
     }
     if (video.currentTime !== lastCameraTime) {
