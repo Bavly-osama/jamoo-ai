@@ -1,0 +1,3 @@
+/* System fallbacks keep the interface available without external font requests. */
+@font-face{font-family:'Aether Sans';src:local('Bahnschrift'),local('Aptos'),local('Segoe UI');font-weight:100 900}
+@font-face{font-family:'Aether Mono';src:local('Cascadia Code'),local('Consolas'),local('Menlo');font-weight:100 900}
