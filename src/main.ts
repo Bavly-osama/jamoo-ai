@@ -43,7 +43,7 @@ document.querySelector("#app")!.innerHTML = `
  <form class="command-bar" id="command"><div class="ai-orb">✦</div><label for="command-input">AETHER AI</label><input id="command-input" maxlength="240" autocomplete="off" placeholder="Try “open system diagnostics”" aria-label="AI command"><button type="submit" id="command-send">Send ↗</button></form>
  <footer class="footer"><div class="footer-left"><span>CONTROL <b id="control-mode">STANDBY</b></span><span>RENDER <b id="fps">—</b></span><span>BUILD <b>1.0.0</b></span></div><div class="privacy">Your camera stays on your device</div></footer></div>
 </main>
-<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden>Pinch here</button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
+<section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-panel"><div class="welcome-mark">⌁</div><div class="eyebrow">WELCOME TO AETHER</div><h2 id="welcome-title">A little less interface.<br>A lot more instinct.</h2><p id="setup-status" role="status">Move your hand to explore. Pinch to select.<br>Your workspace is a gesture away.</p><div class="setup-progress" id="setup-progress" hidden><span></span></div><button class="primary" id="enable">Enable camera</button><button class="secondary" id="preview">Explore with mouse</button><button class="secondary" id="cancel" hidden>Cancel setup</button><button class="tutorial-target" id="tutorial-target" data-target="tutorial" data-draggable="true" hidden><span class="tutorial-slider-label" id="tutorial-slider-label">Slide →</span><span class="tutorial-slider-thumb" id="tutorial-slider-thumb" aria-hidden="true"></span></button><div class="welcome-note">CAMERA PROCESSED LOCALLY · NO VIDEO UPLOADS<br>Good light. One hand. A little room to move.</div></div></section>
 <div class="camera-preview" id="camera-preview" hidden><video id="video" muted playsinline></video><canvas id="landmarks"></canvas><span id="camera-caption">YOUR HAND</span></div><canvas id="hand-overlay" class="hand-overlay" aria-hidden="true"></canvas><div id="pointer" class="pointer" style="opacity:0"></div>
 <aside class="drawer" id="inspection" hidden aria-label="Object inspection"><button class="close" id="close-inspection" aria-label="Close inspection" data-target="close-inspection">×</button><div class="eyebrow">OBJECT INSPECTION</div><h2 id="inspection-title">Arc reactor / ARC–001</h2><p id="inspection-description">A self-contained holographic energy core. Spread two pinched hands to expand the projection.</p><div class="metric"><span>Projection scale</span><b id="inspection-scale">1.00×</b></div><div class="metric"><span>Rotation</span><b id="rotation-label">Active</b></div><button class="utility" id="rotate" data-target="rotate">Pause rotation</button><button class="utility" id="reset" data-target="reset">Reset workspace</button><p>Module tiles can be moved by pinching and holding. Release your pinch to place them.</p></aside>
 <aside class="drawer" id="debug" hidden aria-label="Developer diagnostics"><button class="close" id="close-debug" aria-label="Close diagnostics" data-target="close-debug">×</button><div class="eyebrow">DEVELOPER VIEW / SHIFT + D</div><h2>System diagnostics</h2><pre id="debug-data"></pre><label>minCutoff<input type="range" id="minCutoff" min=".5" max="5" step=".1" value="1.6"></label><label>beta<input type="range" id="beta" min="0" max="2" step=".05" value=".35"></label><label>dCutoff<input type="range" id="dCutoff" min=".5" max="3" step=".1" value="1"></label><label>Show landmarks<input type="checkbox" id="show-landmarks"></label><label>AI gesture fallback<input type="checkbox" id="ai-fallback"></label><button class="utility" id="recalibrate">Recalibrate hand</button><button class="utility" id="switch-camera">Switch front / back camera</button><button class="utility" id="restart-camera">Restart camera</button><p>Hand confidence is the model’s handedness score; detection and presence use separate internal thresholds. Reactor and scanner values are simulated.</p></aside><div class="toast" id="toast" role="status" hidden></div>`;
@@ -104,7 +104,9 @@ let calibration = new CalibrationManager(),
   stepSince = 0,
   moveMin = 1,
   moveMax = 0,
-  openSince = 0;
+  openSince = 0,
+  slideFill = 0,
+  slideArmed = false;
 let toastTimer: ReturnType<typeof setTimeout>;
 function toast(message: string) {
   $("toast").textContent = message;
@@ -189,6 +191,8 @@ async function startCamera() {
     step = 0;
     stepSince = performance.now();
     openSince = 0;
+    slideFill = 0;
+    slideArmed = false;
     moveMin = 1;
     moveMax = 0;
     status("Raise your hand — watch the glowing skeleton. Open your palm.");
@@ -244,15 +248,22 @@ function advance() {
   step++;
   stepSince = performance.now();
   openSince = 0;
+  slideFill = 0;
+  slideArmed = false;
   $("setup-progress").querySelector<HTMLElement>("span")!.style.width =
     `${(step / 3) * 100}%`;
   const prompts = [
     "Raise your hand — watch the glowing skeleton. Open your palm.",
     "Move your hand left, then right. The pointer follows your fingertip.",
-    "Pinch here once — thumb tip toward index tip. Or tap the button.",
+    "Swipe across the slider — move your hand left to right. Or tap it.",
   ];
   status(prompts[step] ?? "Connection established. Welcome to your workspace.");
   $("tutorial-target").hidden = step !== 2;
+  if (step === 2) {
+    $("tutorial-slider-label").textContent = "Slide →";
+    $("tutorial-target").style.setProperty("--pinch", "0");
+    $("tutorial-slider-thumb").style.left = "8%";
+  }
   if (step === 3) finishTutorial();
 }
 function nearTutorial(point: { x: number; y: number }) {
@@ -287,10 +298,10 @@ function tutorial(s: TrackingState, t: number) {
     1,
   );
   if (!tile.hidden) {
-    tile.style.setProperty("--pinch", String(progress));
     tile.classList.toggle(
       "hovered",
-      progress > 0.2 ||
+      slideFill > 0.15 ||
+        progress > 0.2 ||
         s.state === "PINCH_STARTING" ||
         s.state === "PINCHED" ||
         s.state === "DRAGGING",
@@ -306,26 +317,41 @@ function tutorial(s: TrackingState, t: number) {
     moveMax = Math.max(moveMax, s.raw.x);
     if (moveMax - moveMin > 0.14) advance();
   } else if (step === 2) {
-    const closing =
+    const tile = $("tutorial-target");
+    const r = tile.getBoundingClientRect();
+    const px = s.point.x * innerWidth;
+    const py = s.point.y * innerHeight;
+    const over =
+      r.width > 0 &&
+      px >= r.left - 40 &&
+      px <= r.right + 40 &&
+      py >= r.top - 50 &&
+      py <= r.bottom + 50;
+    const local = r.width
+      ? clamp((px - r.left) / r.width, 0, 1)
+      : 0;
+    if (over && local < 0.28) slideArmed = true;
+    if (over && slideArmed) {
+      slideFill = Math.max(slideFill, local);
+      tile.style.setProperty("--pinch", String(slideFill));
+      $("tutorial-slider-thumb").style.left =
+        `${clamp(8 + slideFill * 76, 8, 88)}%`;
+      $("tutorial-slider-label").textContent =
+        slideFill > 0.55 ? "Keep going →" : "Slide →";
+    }
+    const swiped = s.events.some((e) => e.type === "swipe");
+    const pinched =
       s.events.some((e) => e.type === "click") ||
       s.state === "PINCHED" ||
-      s.state === "PINCH_STARTING" ||
-      s.state === "DRAGGING" ||
-      progress > 0.12 ||
-      (engine.openBaseline > 0 && s.pinch < engine.openBaseline * 0.92);
-    if (closing) {
-      openSince ||= t;
-      if (
-        s.events.some((e) => e.type === "click") ||
-        progress > 0.18 ||
-        s.state === "PINCHED" ||
-        t - openSince > 60
-      )
-        advance();
-      else status("Yes — one pinch…");
+      (s.state === "PINCH_STARTING" && progress > 0.18);
+    if (swiped || slideFill >= 0.78 || pinched) {
+      tile.style.setProperty("--pinch", "1");
+      $("tutorial-slider-label").textContent = "Done";
+      advance();
+    } else if (slideFill > 0.2) {
+      status("Yes — slide all the way to the right…");
     } else {
-      openSince = 0;
-      status("Pinch here once — or tap the button.");
+      status("Swipe across the slider — or tap it.");
     }
   }
 }

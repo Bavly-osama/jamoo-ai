@@ -40,10 +40,18 @@ test("synthetic hands complete every tutorial gate through the actual gesture en
         if (text.startsWith("Move your hand left"))
           hands = [hand(0.3 + Math.min(0.4, elapsed / 1500), 0.5, 0.8)];
         if (
-          text.startsWith("Pinch here") ||
-          text.startsWith("Yes — one pinch")
-        )
-          hands = [hand(0.5, 0.5, elapsed < 400 ? 0.8 : 0.15)];
+          text.startsWith("Swipe across") ||
+          text.startsWith("Yes — slide")
+        ) {
+          const tile = document.getElementById("tutorial-target");
+          const r = tile?.getBoundingClientRect();
+          const y = r ? (r.top + r.height / 2) / innerHeight : 0.55;
+          const x =
+            r && r.width
+              ? (r.left + Math.min(1, elapsed / 900) * r.width) / innerWidth
+              : 0.2 + Math.min(0.6, elapsed / 900);
+          hands = [hand(x, y, 0.8)];
+        }
         queueMicrotask(() =>
           this.onmessage?.({
             data: { type: "result", hands, timestamp: m.timestamp, ms: 2 },

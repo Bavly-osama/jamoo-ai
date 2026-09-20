@@ -790,26 +790,50 @@ h1 {
   transition: width 0.4s;
 }
 .tutorial-target {
-  width: min(200px, 78vw);
-  height: 110px;
+  width: min(280px, 86vw);
+  height: 64px;
   margin: 20px auto;
-  border: 1px dashed var(--cyan);
+  border: 1px solid var(--cyan);
   display: grid;
   place-items: center;
   color: var(--cyan);
   font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   background:
     linear-gradient(
       90deg,
-      #3d8f9f88 calc(var(--pinch, 0) * 100%),
-      #21414d calc(var(--pinch, 0) * 100%)
+      #3d8f9fcc calc(var(--pinch, 0) * 100%),
+      #14313bcc calc(var(--pinch, 0) * 100%)
     );
   transition:
     border-color 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
+    box-shadow 0.15s;
   position: relative;
   overflow: hidden;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tutorial-slider-label {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+.tutorial-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  width: 42px;
+  height: 42px;
+  margin-top: -21px;
+  margin-left: -21px;
+  border-radius: 50%;
+  border: 1px solid #c7fbff;
+  background: radial-gradient(circle at 35% 35%, #e8ffff, #3aa8b8 70%);
+  box-shadow: 0 0 16px #5ddfff88;
+  z-index: 1;
+  pointer-events: none;
+  transition: left 0.05s linear;
 }
 .tutorial-target.hovered,
 .tutorial-target:hover {
