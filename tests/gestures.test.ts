@@ -146,6 +146,18 @@ describe("temporal interaction", () => {
       );
     expect(events.some((x) => x.type === "click")).toBe(true);
   });
+  it("easy mode accepts a loose near-miss pinch", () => {
+    const e = new GestureEngine();
+    e.easyMode = true;
+    e.openBaseline = 0.95;
+    const events = [];
+    for (let i = 0; i < 8; i++)
+      events.push(
+        ...e.update([hand(0.5, 0.5, i < 2 ? 0.9 : 0.7)], i * 40, "tutorial")
+          .events,
+      );
+    expect(events.some((x) => x.type === "click")).toBe(true);
+  });
   it("two hands crossing retain primary identity", () => {
     const e = new GestureEngine();
     const a = hand(0.3, 0.5, 0.8);

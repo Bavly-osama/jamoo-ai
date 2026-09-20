@@ -48,24 +48,35 @@ export function isPinching(
   h: Hand,
   enter: number,
   openBaseline: number,
+  easy = false,
 ) {
   const ratio = normalizePinch(h);
   const tips = tipDistance(h);
   const palm = Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]));
+  if (easy) {
+    return (
+      ratio < Math.max(enter, 0.78) ||
+      tips < 0.2 ||
+      tips < palm * 0.75 ||
+      ratio < openBaseline * 0.88
+    );
+  }
   return (
     ratio < enter ||
-    tips < 0.12 ||
-    tips < palm * 0.5 ||
-    ratio < openBaseline * 0.72
+    tips < 0.14 ||
+    tips < palm * 0.55 ||
+    ratio < openBaseline * 0.75
   );
 }
 export class GestureEngine {
   smoother = new HandSmoother();
   mirrored = true;
   /** Phone-friendly absolute ceiling; relative openBaseline does most of the work. */
-  enter = 0.62;
-  exit = 0.8;
+  enter = 0.68;
+  exit = 0.85;
   openBaseline = 0.95;
+  /** Ultra-forgiving thresholds used during onboarding. */
+  easyMode = false;
   private prevPinch = 1;
   private closingBoost = false;
   state: State = "IDLE";
@@ -174,10 +185,11 @@ export class GestureEngine {
       this.openBaseline = clamp(this.openBaseline, 0.55, 1.4);
     }
     const pinched =
-      isPinching(hand, this.enter, this.openBaseline) ||
-      (this.closingBoost && this.pinch < this.openBaseline * 0.8);
+      isPinching(hand, this.enter, this.openBaseline, this.easyMode) ||
+      (this.closingBoost &&
+        this.pinch < this.openBaseline * (this.easyMode ? 0.9 : 0.8));
     const released =
-      this.pinch > Math.max(this.exit, this.openBaseline * 0.82) &&
+      this.pinch > Math.max(this.exit, this.openBaseline * (this.easyMode ? 0.9 : 0.82)) &&
       !this.closingBoost;
     const hit = resolveHit(this.point);
     if (this.requireOpen) {
@@ -191,7 +203,9 @@ export class GestureEngine {
     const stableTarget = t - this.hoverSince >= 30 ? hit : null;
     const both =
       valid.length === 2 &&
-      valid.every((h) => isPinching(h, this.enter, this.openBaseline));
+      valid.every((h) =>
+        isPinching(h, this.enter, this.openBaseline, this.easyMode),
+      );
     if (both) {
       this.zoomSince ??= t;
       if (t - this.zoomSince >= 120) {
@@ -231,7 +245,7 @@ export class GestureEngine {
         this.state = "PINCH_STARTING";
         this.swipeStart = undefined;
         this.openSince = null;
-        if (t - this.pinchSince >= 55 && t - this.lastClick >= 220) {
+        if (t - this.pinchSince >= (this.easyMode ? 35 : 55) && t - this.lastClick >= (this.easyMode ? 150 : 220)) {
           this.held = true;
           this.clicked = false;
           this.target = stableTarget ?? hit;
