@@ -55,7 +55,8 @@ export class HandTracker {
           clearTimeout(this.watchdog);
           this.busy = false;
           this.inferenceMs = m.ms;
-          this.targetFps = m.ms > 45 ? 20 : 30;
+          // Inference remains prioritized; the render loop reduces graphics first.
+          this.targetFps = 30;
           this.onResult(m.hands, m.timestamp);
         }
       };

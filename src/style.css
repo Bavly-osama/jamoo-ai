@@ -1416,3 +1416,54 @@ h1 {
     transition: none !important;
   }
 }
+
+/* Interactive workspace layers share the existing holographic visual language. */
+.card-slider-track.modules { transition: none; gap:16px; }
+.card-slider-viewport { perspective:1000px; touch-action:pan-y; }
+.module.card-slide { transform:translateZ(calc(var(--depth,0) * -55px)) scale(calc(1 - var(--depth,0) * .06)); opacity:calc(1 - var(--depth,0) * .25); position:relative; }
+.module.card-slide:hover,.module.card-slide.hovered { opacity:1; transform:translateZ(12px) scale(1.035); box-shadow:inset 0 0 28px #69dcea1c,0 0 20px #69dcea24; }
+.target-brackets {position:absolute;inset:7px;border:1px solid transparent;pointer-events:none;}
+.hovered .target-brackets,.module:hover .target-brackets {border-color:#9cf3ff90;animation:pulse 1.6s infinite;}
+.module-open .module-section {opacity:.35;transform:scale(.97);transition:.35s;}
+.activity {position:fixed;z-index:38;inset:100px 5% 105px;max-width:1100px;margin:auto;background:linear-gradient(145deg,#071c2af5,#102e38f5);border:1px solid #76d4e077;box-shadow:0 24px 100px #0009,inset 0 0 70px #48dff010;overflow:auto;padding:28px;}
+.activity header {display:flex;justify-content:space-between;align-items:center;gap:16px;position:relative;z-index:2;}
+.activity h2 {font-size:24px;font-weight:400;margin:8px 0;}
+.activity p {font-size:13px;line-height:1.7;color:#a8c8d0;}
+.activity.opening {animation:hologram-open .5s ease-out;}
+.activity {overflow-x:hidden;}
+@keyframes hologram-open {from{opacity:0;transform:perspective(900px) translateZ(-180px) scale(.8);clip-path:inset(45% 0);}to{opacity:1;transform:perspective(900px) translateZ(0);clip-path:inset(0);}}
+.activity-rings {position:absolute;width:230px;height:230px;border:1px solid #79d7ed16;border-radius:50%;right:-60px;top:-70px;box-shadow:0 0 0 20px #79d7ed09,0 0 0 40px #79d7ed06;pointer-events:none;}
+.module-projection {height:clamp(180px,42vh,430px);position:relative;}
+.scene.module-scene {position:absolute;inset:0!important;width:100%;height:100%;}
+.projection-input {position:absolute;inset:0;touch-action:none;cursor:grab;z-index:2;}
+.projection-input:active {cursor:grabbing;}
+.projection-controls {position:relative;z-index:2;}
+.projection-controls .utility {margin-right:8px;}
+.object-board {position:relative;min-height:250px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;padding:35px;}
+.holo-object {min-height:90px;border:1px solid #78d9e56b;background:linear-gradient(130deg,#38748633,#102737);color:#c5f5fa;clip-path:polygon(0 0,90% 0,100% 20%,100% 100%,0 100%);padding:16px;cursor:grab;touch-action:none;}
+.holo-object span {display:block;font-size:26px;margin-bottom:8px;color:#78dce8;}
+.holo-object.grabbed {filter:drop-shadow(0 0 10px #79e9fb);z-index:3;}
+.telemetry {font:13px/2 "Aether Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:#a8e6ec;}
+.armor-grid {display:grid;gap:30px;padding:30px 0;}
+.armor-grid label {display:flex;gap:20px;align-items:center;}
+.armor-grid input {flex:1;min-width:0;accent-color:#76e0f0;}
+.assistant-panel {position:fixed;right:5%;bottom:110px;z-index:42;width:min(430px,90vw);max-height:70svh;overflow:auto;padding:24px;background:#081e2afa;border:1px solid #77cfe57a;box-shadow:0 15px 70px #0009;text-align:center;}
+.assistant-panel .close {position:absolute;right:12px;top:10px;font-size:24px;}
+.assistant-core {position:relative;width:75px;height:75px;margin:0 auto 18px;border:1px solid #82f1ff;border-radius:50%;box-shadow:inset 0 0 28px #73e8ed33;animation:pulse 3s infinite;}
+.assistant-core i {position:absolute;inset:8px;border:1px solid #82f1ff70;border-radius:50%;}
+.assistant-core i:nth-child(2) {inset:17px;}.assistant-core i:nth-child(3) {inset:28px;background:#b7faff;}
+.assistant-core[data-state="PROCESSING"] {border-style:dashed;animation:spin 1.8s linear infinite;}
+.voice-wave {height:30px;display:flex;gap:4px;align-items:center;justify-content:center;margin:12px 0;}
+.voice-wave i {height:4px;width:3px;background:#8be4ed;}
+[data-state="LISTENING"] .voice-wave i,[data-state="SPEAKING"] .voice-wave i {animation:voice-wave .7s var(--delay) infinite alternate;}
+@keyframes voice-wave {to{height:28px;opacity:.5;}}
+#assistant-response {font-size:14px;line-height:1.8;white-space:pre-wrap;text-align:left;max-height:220px;overflow:auto;}
+.assistant-controls {display:flex;justify-content:center;gap:8px;flex-wrap:wrap;}
+.voice-note {font-size:10px;line-height:1.7;color:#8eb0bd;}
+.command-bar {position:relative;z-index:43;}
+.module-open .command-bar {position:fixed;bottom:10px;left:5%;right:5%;margin:0;background:#102a35;}
+.pointer {transition:opacity .12s;}
+.scene[data-context="lost"]::after {content:"Graphics paused. Waiting for GPU recovery…";position:absolute;inset:40% 10%;text-align:center;}
+@media(max-width:760px){.activity {inset:85px 3% 105px;padding:16px;}.activity h2 {font-size:20px;}.activity header .utility {font-size:10px;}.object-board {gap:12px;padding:20px 0;}.holo-object {font-size:11px;}.telemetry {font-size:11px;}.assistant-panel {bottom:130px;padding:18px;}.module-projection {height:34vh;}.workspace-grid .side-stack {display:none;}.module-section {margin-top:12px;}}
+@media(max-height:500px){.activity {inset:12px 3% 65px;}.activity header {position:sticky;top:0;background:#0a2330;}.assistant-panel {max-height:75svh;bottom:65px;}.assistant-core {display:none;}}
+@media(prefers-reduced-motion:reduce){.activity.opening,.assistant-core,.voice-wave i {animation:none!important;}}

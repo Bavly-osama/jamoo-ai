@@ -8,6 +8,7 @@ export class HandSmoother {
   minCutoff = 1.6;
   beta = 0.35;
   dCutoff = 1;
+  deadZone = .002;
   private previous?: Point;
   private filtered?: Point;
   private derivative = { x: 0, y: 0 };
@@ -33,7 +34,8 @@ export class HandSmoother {
         this.minCutoff + this.beta * Math.abs(this.derivative[axis]),
         dt,
       );
-      this.filtered[axis] += f * (p[axis] - this.filtered[axis]);
+      const delta=p[axis]-this.filtered[axis];
+      if(Math.abs(delta)>this.deadZone) this.filtered[axis] += f * delta;
     }
     this.previous = { ...p };
     this.time = t;

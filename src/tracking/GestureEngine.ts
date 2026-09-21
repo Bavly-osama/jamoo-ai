@@ -1,4 +1,5 @@
 import { HandSmoother, type Point } from "./HandSmoother";
+import { PinchDetector, palmSize } from "./PinchDetector";
 export interface Landmark extends Point {
   z: number;
 }
@@ -40,7 +41,7 @@ export function tipDistance(h: Hand) {
 }
 export function normalizePinch(h: Hand) {
   return (
-    tipDistance(h) / Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]))
+    Math.hypot(h.landmarks[4].x-h.landmarks[8].x,h.landmarks[4].y-h.landmarks[8].y,h.landmarks[4].z-h.landmarks[8].z) / palmSize(h)
   );
 }
 /** True when tips are close enough for a real-world pinch on phones. */
@@ -51,30 +52,16 @@ export function isPinching(
   easy = false,
 ) {
   const ratio = normalizePinch(h);
-  const tips = tipDistance(h);
-  const palm = Math.max(0.015, distance(h.landmarks[0], h.landmarks[9]));
-  if (easy) {
-    // Tutorial / onboarding: accept almost any thumb–index close.
-    return (
-      ratio < Math.max(enter, 0.92) ||
-      tips < 0.32 ||
-      tips < palm * 0.95 ||
-      ratio < openBaseline * 0.96
-    );
-  }
-  return (
-    ratio < enter ||
-    tips < 0.14 ||
-    tips < palm * 0.55 ||
-    ratio < openBaseline * 0.75
-  );
+  return ratio < enter;
 }
 export class GestureEngine {
   smoother = new HandSmoother();
   mirrored = true;
   /** Phone-friendly absolute ceiling; relative openBaseline does most of the work. */
-  enter = 0.72;
-  exit = 0.8;
+  enter = 0.5;
+  exit = 0.7;
+  pinchDetector = new PinchDetector();
+  averagePinchDuration = 100;
   openBaseline = 0.95;
   /** Ultra-forgiving thresholds used during onboarding. */
   easyMode = false;
@@ -118,8 +105,9 @@ export class GestureEngine {
     );
     const hand = valid.find((h) => h.id === this.primaryId) ?? valid[0];
     if (!hand) {
+      if (!this.held) { this.pinchSince = null; this.pinchDetector.reset(); }
       const age = t - this.lastReliable;
-      if (age > 480) {
+      if (age > 300) {
         if (this.held) {
           events.push({ type: "drop", target: this.target ?? undefined });
           this.requireOpen = true;
@@ -133,11 +121,12 @@ export class GestureEngine {
         this.zoomSince = null;
         this.state = "IDLE";
         this.swipeStart = undefined;
+        this.pinchDetector.reset();
       }
       return this.snapshot(
         events,
-        age < 700,
-        clamp(1 - (age - 480) / 220),
+        age < 550,
+        clamp(1 - (age - 300) / 250),
         age,
       );
     }
@@ -155,6 +144,8 @@ export class GestureEngine {
       this.held = false;
       this.clicked = false;
       this.target = null;
+      this.requireOpen = true;
+      this.pinchDetector.reset();
     }
     this.primaryId = hand.id;
     this.confidence = hand.confidence;
@@ -189,16 +180,9 @@ export class GestureEngine {
       this.openBaseline += 0.08 * (this.pinch - this.openBaseline);
       this.openBaseline = clamp(this.openBaseline, 0.55, 1.4);
     }
-    const pinched =
-      isPinching(hand, this.enter, this.openBaseline, this.easyMode) ||
-      (this.closingBoost &&
-        this.pinch < this.openBaseline * (this.easyMode ? 0.98 : 0.8));
-    const released =
-      this.pinch >
-        Math.max(
-          this.exit,
-          this.openBaseline * (this.easyMode ? 0.7 : 0.75),
-        ) && !this.closingBoost;
+    const pinchResult = this.pinchDetector.update(hand, t, this.enter, this.exit, this.averagePinchDuration);
+    const pinched = pinchResult.closed;
+    const released = this.pinch > this.exit && !pinchResult.closed;
     const hit = resolveHit(this.point);
     if (this.requireOpen) {
       if (released) this.requireOpen = false;
@@ -254,7 +238,7 @@ export class GestureEngine {
         this.swipeStart = undefined;
         this.openSince = null;
         if (
-          t - this.pinchSince >= (this.easyMode ? 16 : 55) &&
+          pinchResult.closed &&
           t - this.lastClick >= (this.easyMode ? 80 : 220)
         ) {
           this.held = true;
@@ -273,9 +257,8 @@ export class GestureEngine {
         }
       } else {
         this.pinchSince = null;
-        this.state = stableTarget ? "HOVERING" : "IDLE";
-        this.detectSwipe(t, events);
-        this.detectCancel(t, events);
+        this.state = ["POSSIBLE_PINCH", "PINCHING"].includes(pinchResult.state) ? "PINCH_STARTING" : stableTarget ? "HOVERING" : "IDLE";
+        if (pinchResult.state === "OPEN") this.detectSwipe(t, events);
       }
     } else {
       if (!this.clicked && (stableTarget || hit)) {
@@ -291,7 +274,8 @@ export class GestureEngine {
       if (released) {
         this.releaseSince ??= t;
         this.state = "RELEASING";
-        if (t - this.releaseSince >= 45) {
+        // PinchDetector already verified 70 ms of separation.
+        if (!pinchResult.closed) {
           if (this.target)
             events.push({
               type: "drop",
@@ -373,6 +357,10 @@ export class GestureEngine {
       hover: !age && this.state === "HOVERING" ? this.hoverTarget : null,
       openBaseline: this.openBaseline,
       enter: this.enter,
+      exit: this.exit,
+      pinchConfidence: this.pinchDetector.confidence,
+      pinchState: this.pinchDetector.state,
+      trackingLossMs: age,
     };
   }
 }

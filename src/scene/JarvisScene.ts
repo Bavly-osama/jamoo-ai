@@ -35,6 +35,16 @@ export class JarvisScene {
   focus: "core" | "globe" | "scanner" | "systems" = "core";
   private reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   private quality = "";
+  private manualRotation = {x:0,y:0};
+  private contextLost=false;
+  setRotation(x:number,y:number){this.manualRotation={x,y};}
+  pickGlobe(x:number,y:number){
+    const r=this.container.getBoundingClientRect();
+    const ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2(((x*innerWidth-r.left)/r.width)*2-1,1-((y*innerHeight-r.top)/r.height)*2),this.camera);
+    const hit=ray.intersectObject(this.views.globe.children[0])[0];if(!hit)return null;
+    const p=this.views.globe.worldToLocal(hit.point.clone()).normalize();
+    return {lat:Math.asin(p.y)*180/Math.PI,lon:Math.atan2(p.z,p.x)*180/Math.PI};
+  }
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
       alpha: true,
@@ -44,6 +54,8 @@ export class JarvisScene {
     this.renderer.setClearColor(0x000000, 0);
     this.container.appendChild(this.renderer.domElement);
     this.renderer.domElement.setAttribute("aria-hidden", "true");
+    this.renderer.domElement.addEventListener("webglcontextlost",e=>{e.preventDefault();this.contextLost=true;this.container.dataset.context="lost";});
+    this.renderer.domElement.addEventListener("webglcontextrestored",()=>{this.contextLost=false;this.quality="";delete this.container.dataset.context;});
     this.camera.position.z = 9;
     const core = this.buildCore();
     const globe = this.buildGlobe();
@@ -275,6 +287,7 @@ export class JarvisScene {
     this.camera.updateProjectionMatrix();
   }
   render(t: number, quality: string, point = { x: 0.5, y: 0.5 }) {
+    if(this.contextLost)return;
     if (this.quality !== quality) {
       this.quality = quality;
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, quality === "HIGH" ? 1.75 : quality === "MEDIUM" ? 1.25 : 1));
@@ -299,7 +312,7 @@ export class JarvisScene {
         r.rotation.z = t * 0.00008 * (i % 2 ? 1 : -1) * (1 + i * 0.12) * this.rotationSpeed;
       });
       this.views.core.children[2].rotation.y = t * 0.00016;
-      this.views.globe.rotation.y = t * 0.00006 * this.rotationSpeed;
+      this.views.globe.rotation.y = this.manualRotation.y + t * 0.00006 * this.rotationSpeed;
       this.views.systems.rotation.y = t * 0.00012 * this.rotationSpeed;
       if (this.sweep) this.sweep.rotation.z = t * 0.0012;
       this.particles.rotation.z = t * 0.000008;
@@ -309,8 +322,8 @@ export class JarvisScene {
         (node as THREE.Group).children[1].visible = i === (this.focus === "core" ? 0 : this.focus === "globe" ? 1 : this.focus === "scanner" ? 2 : 3);
       });
     }
-    object.rotation.x += (0.1 * (point.y - 0.5) - object.rotation.x) * 0.035;
-    object.rotation.y += (0.14 * (point.x - 0.5) - object.rotation.y) * 0.035;
+    object.rotation.x += (this.manualRotation.x + 0.1 * (point.y - 0.5) - object.rotation.x) * 0.15;
+    if(this.focus!=="globe")object.rotation.y += (this.manualRotation.y + 0.14 * (point.x - 0.5) - object.rotation.y) * 0.15;
     this.camera.position.x += (0.35 * (point.x - 0.5) - this.camera.position.x) * 0.04;
     this.camera.position.y += (-0.22 * (point.y - 0.5) - this.camera.position.y) * 0.04;
     this.camera.lookAt(0, 0, 0);

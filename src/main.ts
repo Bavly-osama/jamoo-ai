@@ -14,7 +14,8 @@ import { EdgeScrollController } from "./interaction/EdgeScrollController";
 import { JarvisScene } from "./scene/JarvisScene";
 import { PerformanceMonitor } from "./performance/PerformanceMonitor";
 import { GeminiCommandService } from "./ai/GeminiCommandService";
-import { GeminiGestureResolver } from "./ai/GeminiGestureResolver";
+import { Workspace } from "./interaction/Workspace";
+import { TutorialController, tutorialPrompts } from "./tracking/TutorialController";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 document.querySelector("#app")!.innerHTML = `
@@ -77,8 +78,7 @@ const video = $<HTMLVideoElement>("video"),
   engine = new GestureEngine(),
   interaction = new InteractionManager(),
   perf = new PerformanceMonitor(),
-  ai = new GeminiCommandService(),
-  resolver = new GeminiGestureResolver(ai);
+  ai = new GeminiCommandService();
 const edgeScroll = new EdgeScrollController();
 let scene: JarvisScene | undefined;
 try {
@@ -87,6 +87,8 @@ try {
   $("scene").innerHTML = '<div class="scene-fallback"></div>';
   toast("WebGL is unavailable. Using a simple hologram.");
 }
+const workspace = new Workspace(scene, setHologramScale, toast);
+let lesson = new TutorialController();
 let setupGeneration = 0,
   running = false,
   starting = false,
@@ -180,15 +182,12 @@ async function startCamera() {
     engine.mirrored = camera.facing === "user";
     engine.smoother.reset();
     const saved = CalibrationManager.load();
-    // Prefer a forgiving live default during onboarding; saved thresholds apply after completion.
-    engine.enter = 0.75;
-    engine.exit = 0.82;
-    engine.openBaseline = 0.95;
-    engine.easyMode = true;
-    if (saved && saved.facing === camera.facing) {
-      engine.enter = Math.max(saved.enter, 0.65);
-      engine.exit = Math.max(saved.exit, engine.enter + 0.08);
-    }
+    engine.enter = saved?.facing === camera.facing ? saved.enter : .5;
+    engine.exit = saved?.facing === camera.facing ? saved.exit : .7;
+    engine.easyMode = false;
+    engine.pinchDetector.reset();
+    if(saved?.facing===camera.facing){workspace.sensitivity=saved.movementSensitivity;engine.smoother.deadZone=saved.deadZone;engine.primaryId=saved.dominantHand;}
+    lesson = new TutorialController();
     calibration = new CalibrationManager();
     step = 0;
     stepSince = performance.now();
@@ -197,18 +196,9 @@ async function startCamera() {
     slideArmed = false;
     moveMin = 1;
     moveMax = 0;
-    status("Raise your hand — watch the glowing skeleton. Open your palm.");
-    $("welcome-title").textContent = "Make the connection.";
+    updateLessonUI();
+
     $("camera-toggle").textContent = "Disable camera";
-    void fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.aiEnabled) {
-          resolver.enabled = true;
-          $<HTMLInputElement>("ai-fallback").checked = true;
-        }
-      })
-      .catch(() => {});
     camera.stream?.getVideoTracks()[0]?.addEventListener("ended", () => {
       if (running) {
         stopCamera();
@@ -234,187 +224,65 @@ async function startCamera() {
 }
 function finishTutorial() {
   const c = calibration.finish(camera.facing);
-  engine.enter = Math.max(c.enter, 0.55);
-  engine.exit = Math.max(c.exit, engine.enter + 0.12);
+  c.skipped = lesson.skipped;
+  engine.enter = c.enter;
+  engine.exit = c.exit;
+  engine.averagePinchDuration = Math.max(80, Math.min(180,c.averagePinchDuration));
+  workspace.sensitivity=c.movementSensitivity;
+  engine.smoother.deadZone=c.deadZone;
   engine.easyMode = false;
   CalibrationManager.save(c);
   $("welcome").hidden = true;
   $("tutorial-target").hidden = true;
+  $("tutorial-listen").hidden = true;
+  $("tutorial-optional").hidden = true;
   $("camera-preview").classList.remove("prominent");
   step = -1;
   interaction.reset();
   setMode("hand");
   toast("You’re connected. Move, pinch, hold, release.");
 }
-function advance() {
-  step++;
-  stepSince = performance.now();
-  openSince = 0;
-  slideFill = 0;
-  slideArmed = false;
-  $("setup-progress").querySelector<HTMLElement>("span")!.style.width =
-    `${(step / 3) * 100}%`;
-  const prompts = [
-    "Raise your hand — watch the glowing skeleton. Open your palm.",
-    "Move your hand left, then right. The pointer follows your fingertip.",
-    "Swipe across the slider — move your hand left to right. Or tap it.",
-  ];
-  status(prompts[step] ?? "Connection established. Welcome to your workspace.");
-  $("tutorial-target").hidden = step !== 2;
-  if (step === 2) {
-    $("tutorial-slider-label").textContent = "Slide →";
-    $("tutorial-target").style.setProperty("--pinch", "0");
-    $("tutorial-slider-thumb").style.left = "8%";
-  }
-  if (step === 3) finishTutorial();
+function updateLessonUI() {
+  step = lesson.stage;
+  if(lesson.done){finishTutorial();return;}
+  status(tutorialPrompts[step]);
+  $("welcome-title").textContent = `JARVIS INITIALIZATION / ${step+1} OF 9`;
+  $("setup-progress").querySelector<HTMLElement>("span")!.style.width = `${step/9*100}%`;
+  $("tutorial-target").hidden = ![1,2,3,4,5,6].includes(step);
+  $("tutorial-slider-label").textContent = ["","Target","← LEFT · RIGHT →","Pinch to select","Hold","Drag →","← CARDS →"][step] ?? "";
+  $("tutorial-optional").hidden = step!==7 && step!==8;
+  $("tutorial-optional").textContent = step===7 ? "Use single-hand controls (skip zoom)" : "Use text controls (skip microphone)";
+  $("tutorial-listen").hidden = step!==8;
+  $("tutorial-target").dataset.stage = String(step);
 }
-function nearTutorial(point: { x: number; y: number }) {
-  if (step === 2) return true;
-  const tile = $("tutorial-target");
-  if (tile.hidden) return false;
-  const r = tile.getBoundingClientRect();
-  if (r.width === 0) return false;
-  const cx = r.left + r.width / 2;
-  const cy = r.top + r.height / 2;
-  return Math.hypot(point.x * innerWidth - cx, point.y * innerHeight - cy) < 220;
+function nearTutorial(point: {x:number;y:number}) {
+  const r=$("tutorial-target").getBoundingClientRect();
+  return !$("tutorial-target").hidden && Math.hypot(point.x*innerWidth-r.left-r.width/2,point.y*innerHeight-r.top-r.height/2)<Math.max(45,r.width*.45);
 }
-function tutorialHit(point: { x: number; y: number }) {
-  if (step === 2) return "tutorial";
-  return interaction.hit(point.x * innerWidth, point.y * innerHeight);
+function tutorialHit(point:{x:number;y:number}) {
+  if(step>=0) return nearTutorial(point)?"tutorial":null;
+  return interaction.hit(point.x*innerWidth,point.y*innerHeight);
 }
-function tutorial(s: TrackingState, t: number) {
-  if (step < 0) return;
-  const h = lastHands.find((h) => h.id === s.primaryId);
-  if (!h || !s.visible || performance.now() - lastResult > 250) return;
-  calibration.observe(
-    s.raw.x,
-    s.pinch,
-    distance(h.landmarks[0], h.landmarks[9]),
-  );
-  if (s.pinch > 0.5)
-    engine.openBaseline = Math.max(engine.openBaseline, s.pinch);
-  const tile = $("tutorial-target");
-  const progress = clamp(
-    1 - s.pinch / Math.max(0.3, engine.openBaseline),
-    0,
-    1,
-  );
-  if (!tile.hidden) {
-    tile.classList.toggle(
-      "hovered",
-      slideFill > 0.15 ||
-        progress > 0.2 ||
-        s.state === "PINCH_STARTING" ||
-        s.state === "PINCHED" ||
-        s.state === "DRAGGING",
-    );
-  }
-  if (step === 0) {
-    if (s.pinch > 0.45 && s.confidence >= 0.5) {
-      openSince ||= t;
-      if (t - openSince > 280) advance();
-    } else openSince = 0;
-  } else if (step === 1) {
-    moveMin = Math.min(moveMin, s.raw.x);
-    moveMax = Math.max(moveMax, s.raw.x);
-    if (moveMax - moveMin > 0.14) advance();
-  } else if (step === 2) {
-    const tile = $("tutorial-target");
-    const r = tile.getBoundingClientRect();
-    const px = s.point.x * innerWidth;
-    const py = s.point.y * innerHeight;
-    const over =
-      r.width > 0 &&
-      px >= r.left - 40 &&
-      px <= r.right + 40 &&
-      py >= r.top - 50 &&
-      py <= r.bottom + 50;
-    const local = r.width
-      ? clamp((px - r.left) / r.width, 0, 1)
-      : 0;
-    if (over && local < 0.28) slideArmed = true;
-    if (over && slideArmed) {
-      slideFill = Math.max(slideFill, local);
-      tile.style.setProperty("--pinch", String(slideFill));
-      $("tutorial-slider-thumb").style.left =
-        `${clamp(8 + slideFill * 76, 8, 88)}%`;
-      $("tutorial-slider-label").textContent =
-        slideFill > 0.55 ? "Keep going →" : "Slide →";
-    }
-    const swiped = s.events.some((e) => e.type === "swipe");
-    const pinched =
-      s.events.some((e) => e.type === "click") ||
-      s.state === "PINCHED" ||
-      (s.state === "PINCH_STARTING" && progress > 0.18);
-    if (swiped || slideFill >= 0.78 || pinched) {
-      tile.style.setProperty("--pinch", "1");
-      $("tutorial-slider-label").textContent = "Done";
-      advance();
-    } else if (slideFill > 0.2) {
-      status("Yes — slide all the way to the right…");
-    } else {
-      status("Swipe across the slider — or tap it.");
-    }
-  }
+let pinchStarted:number|null=null;
+function tutorial(s:TrackingState,t:number) {
+  if(step<0)return;
+  const h=lastHands.find(h=>h.id===s.primaryId);
+  if(!h||s.trackingLossMs>0)return;
+  calibration.observe(s.raw.x,s.pinch,distance(h.landmarks[0],h.landmarks[9]),s.raw.y,Math.hypot(s.velocity.x,s.velocity.y),s.primaryId);
+  if(s.pinchState==="POSSIBLE_PINCH")pinchStarted??=t;
+  if(s.pinchState==="PINCH_CONFIRMED"&&pinchStarted!==null){calibration.recordPinch(t-pinchStarted);pinchStarted=null;}
+  const previous=lesson.stage;
+  lesson.update({visible:s.visible,x:s.point.x,y:s.point.y,pinch:s.pinch,state:s.pinchState,click:s.events.some(e=>e.type==="click"&&e.target==="tutorial"),hold:s.state==="DRAGGING"||s.state==="PINCHED",zoom:s.events.find(e=>e.type==="zoom")?.scale??1,hands:lastHands.length,onTarget:nearTutorial(s.point)},t);
+  if(step===2||step===6)$("tutorial-target").style.setProperty("--pinch",String(s.point.x));
+  if(lesson.stage!==previous)updateLessonUI();
 }
-tracker.onResult = (hands, time) => {
-  const now = performance.now();
-  lastResult = now;
-  // Hold the last good pose briefly so one missed frame does not flash the skeleton off.
-  if (hands.length) {
-    lastHands = hands;
-    lastHandSeen = now;
-  } else if (now - lastHandSeen > 450) {
-    lastHands = [];
-  }
-  const stableHands =
-    hands.length > 0
-      ? hands
-      : now - lastHandSeen < 400
-        ? lastHands
-        : [];
-  state = engine.update(stableHands, time, tutorialHit);
-  applyState(state, time);
-  if (stableHands.length) {
-    const region = $("card-slider").getBoundingClientRect();
-    const overCarousel =
-      state.point.y * innerHeight >= region.top - 20 &&
-      state.point.y * innerHeight <= region.bottom + 20;
-    const context =
-      step === 2
-        ? "tutorial_pinch"
-        : step < 0 && overCarousel
-          ? "carousel"
-          : "";
-    const captured = activeModule;
-    const tutorialStep = step;
-    void resolver
-      .observe(
-        state.point,
-        time,
-        context,
-        state.pinch,
-        !["IDLE", "HOVERING", "PINCH_STARTING"].includes(state.state),
-        state.hover === "tutorial" || nearTutorial(state.point),
-      )
-      .then((d) => {
-        if (!d || d.confidence < 0.8) return;
-        if (tutorialStep === 2 && step === 2 && d.action === "pinch_click") {
-          advance();
-          return;
-        }
-        if (
-          step < 0 &&
-          captured === activeModule &&
-          state &&
-          ["IDLE", "HOVERING"].includes(state.state)
-        ) {
-          if (d.action === "swipe_left") selectModule(activeModule + 1);
-          if (d.action === "swipe_right") selectModule(activeModule - 1);
-        }
-      })
-      .catch(() => {});
-  }
+tracker.onResult = (hands,time) => {
+  lastResult=performance.now();
+  if(hands.length){lastHands=hands;lastHandSeen=lastResult;}
+  else if(lastResult-lastHandSeen>550)lastHands=[];
+  // Never replay stale detections as new gesture observations.
+  state=engine.update(hands,time,tutorialHit);
+  applyState(state,time);
 };
 tracker.onError = (message) => {
   stopCamera();
@@ -481,6 +349,7 @@ function applyState(s: TrackingState, time: number) {
       ),
     );
   for (const event of s.events) {
+    if(step<0 && workspace.voice.state!=="IDLE" && !["drop","cancel"].includes(event.type) && !["listen","stop-voice","close-assistant","mute-voice"].includes(event.target??"")) continue;
     interaction.handle(event);
     if (event.type === "click") {
       $("pointer").classList.remove("pulse");
@@ -493,19 +362,15 @@ function applyState(s: TrackingState, time: number) {
       $("debug").hidden = true;
       if (open) toast("Panel closed.");
     }
-    if (event.type === "swipe" && step < 0) {
-      handCardDrag = null;
-      selectModule(activeModule + (event.direction === "left" ? 1 : -1));
-      $("gesture-label").textContent = "card swipe";
-    }
+    if(step<0)workspace.event(event);
     if (event.type === "zoom" && scene) {
       if (!wasZoom) zoomStartScale = scene.scale;
       setHologramScale(zoomStartScale * event.scale!);
     }
   }
   wasZoom = s.state === "ZOOMING";
-  if (!wasZoom && step < 0) updateHologramSlider(s);
-  if (!wasZoom && step < 0) updateHandCardSwipe(s);
+  if (!wasZoom && step < 0 && !workspace.active && workspace.voice.state==="IDLE") updateHologramSlider(s);
+  if (step < 0) workspace.update(s,time);
   if (!wasZoom && s.state !== "HOVERING" && s.hover !== "hologram-scale")
     $("hologram-slider").classList.remove("active");
   $("gesture-label").textContent = s.visible
@@ -518,62 +383,7 @@ function applyState(s: TrackingState, time: number) {
   );
   tutorial(s, time);
 }
-function syncCardTrack(dragPx = 0) {
-  const track = $("card-slider-track");
-  const viewport = $("card-slider-viewport");
-  const card = document.querySelector<HTMLElement>(".card-slide");
-  const w = card?.offsetWidth ?? Math.min(320, viewport.clientWidth * 0.72);
-  const gap = 16;
-  const pad = Math.max(12, (viewport.clientWidth - w) / 2);
-  const x = pad - activeModule * (w + gap) + dragPx;
-  track.style.transform = `translateX(${x}px)`;
-}
-function selectModule(index: number) {
-  activeModule = (index + 4) % 4;
-  $("card-slider").classList.remove("dragging");
-  syncCardTrack(0);
-  document
-    .querySelectorAll(".module")
-    .forEach((el, i) => el.classList.toggle("active", i === activeModule));
-  document.querySelectorAll(".card-dot").forEach((el, i) => {
-    el.classList.toggle("active", i === activeModule);
-  });
-  $("module-count").textContent = `0${activeModule + 1} / 04`;
-  if (scene)
-    scene.focus = (["core", "globe", "scanner", "systems"] as const)[
-      activeModule
-    ];
-  document
-    .querySelectorAll(".orbit-node")
-    .forEach((el, i) => el.classList.toggle("active", i === activeModule));
-  document.querySelector(".core-caption")!.textContent = [
-    "NEURAL CORE",
-    "ORBITAL MAP",
-    "SECTOR 07",
-    "TELEMETRY",
-  ][activeModule];
-  document.querySelector(".core-word")!.textContent = [
-    "AETHER",
-    "ATLAS",
-    "SCAN",
-    "LINK",
-  ][activeModule];
-  $("object-title").textContent = [
-    "Arc reactor",
-    "Orbital atlas",
-    "Target scanner",
-    "System diagnostics",
-  ][activeModule];
-  $("object-code").textContent = ["ARC–001", "ORB–002", "SCN–003", "SYS–004"][
-    activeModule
-  ];
-  if (activeModule === 2) {
-    $("inspection").hidden = false;
-    $("inspection-title").textContent = "Target scanner / SCN–003";
-    $("inspection-description").textContent =
-      "Three simulated signals in sector 07. This is a holographic scene element, not real environment sensing.";
-  } else if (activeModule === 3) $("debug").hidden = false;
-}
+function selectModule(index:number) {activeModule=Math.max(0,Math.min(9,index));workspace.select(activeModule);}
 function inspect() {
   $("inspection").hidden = false;
   $("inspection-title").textContent =
@@ -598,9 +408,11 @@ function toggleDebug() {
   $("debug").hidden = !$("debug").hidden;
 }
 $("enable").onclick = () => void startCamera();
-$("tutorial-target").onclick = () => {
-  if (step === 2) advance();
-};
+$("tutorial-target").onclick = () => {};
+$("tutorial-target").insertAdjacentHTML("afterend", '<button class="secondary" id="tutorial-listen" hidden>Listen: Jarvis, hello</button><button class="secondary" id="tutorial-optional" hidden></button>');
+$("tutorial-listen").onclick=()=>workspace.voice.listen();
+$("tutorial-optional").onclick=()=>{lesson.skipOptional();updateLessonUI();};
+workspace.onSpeech=text=>{if(step===8){lesson.speech(text);updateLessonUI();}};
 $("preview").onclick = () => {
   $("welcome").hidden = true;
   setMode("mouse");
@@ -624,112 +436,7 @@ $("core").onclick = inspect;
 $("diagnostics").onclick = toggleDebug;
 $("close-debug").onclick = () => ($("debug").hidden = true);
 $("close-inspection").onclick = () => ($("inspection").hidden = true);
-document.querySelectorAll<HTMLElement>("[data-module-index]").forEach((el) => {
-  el.onclick = () => selectModule(Number(el.dataset.moduleIndex));
-});
-["core-module", "globe", "scanner", "systems"].forEach(
-  (id, i) => ($(id).onclick = () => selectModule(i)),
-);
-$("previous").onclick = () => selectModule(activeModule - 1);
-$("next").onclick = () => selectModule(activeModule + 1);
-syncCardTrack(0);
-window.addEventListener("resize", () => syncCardTrack(0));
-document.querySelectorAll<HTMLElement>(".card-dot").forEach((dot) => {
-  dot.onclick = () => selectModule(Number(dot.dataset.dot));
-});
-
-let cardDrag: {
-  x: number;
-  startSlide: number;
-  moved: boolean;
-} | null = null;
-let handCardDrag: { x: number; startSlide: number } | null = null;
-const cardViewport = $("card-slider-viewport");
-const cardStepPx = () => {
-  const card = document.querySelector<HTMLElement>(".card-slide");
-  return (card?.offsetWidth ?? 280) + 16;
-};
-cardViewport.addEventListener("pointerdown", (e) => {
-  if ((e.target as HTMLElement).closest(".arrow")) return;
-  cardDrag = {
-    x: e.clientX,
-    startSlide: activeModule,
-    moved: false,
-  };
-  $("card-slider").classList.add("dragging");
-  cardViewport.setPointerCapture(e.pointerId);
-});
-cardViewport.addEventListener("pointermove", (e) => {
-  if (!cardDrag) return;
-  const dx = e.clientX - cardDrag.x;
-  if (Math.abs(dx) > 8) cardDrag.moved = true;
-  syncCardTrack(dx);
-});
-function endCardDrag(clientX: number) {
-  if (!cardDrag) return;
-  const dx = clientX - cardDrag.x;
-  $("card-slider").classList.remove("dragging");
-  const threshold = Math.min(90, cardStepPx() * 0.22);
-  if (cardDrag.moved && Math.abs(dx) > threshold) {
-    selectModule(cardDrag.startSlide + (dx < 0 ? 1 : -1));
-  } else {
-    selectModule(cardDrag.startSlide);
-  }
-  cardDrag = null;
-}
-cardViewport.addEventListener("pointerup", (e) => endCardDrag(e.clientX));
-cardViewport.addEventListener("pointercancel", (e) => endCardDrag(e.clientX));
-cardViewport.addEventListener(
-  "click",
-  (e) => {
-    if (cardDrag?.moved) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  },
-  true,
-);
-
-function updateHandCardSwipe(s: TrackingState) {
-  if (step >= 0 || !s.visible) {
-    handCardDrag = null;
-    return;
-  }
-  const region = $("card-slider").getBoundingClientRect();
-  const py = s.point.y * innerHeight;
-  const px = s.point.x * innerWidth;
-  const over =
-    py >= region.top - 30 &&
-    py <= region.bottom + 30 &&
-    px >= region.left - 40 &&
-    px <= region.right + 40;
-  const open =
-    s.pinch > 0.4 &&
-    !["PINCHED", "DRAGGING", "ZOOMING", "PINCH_STARTING"].includes(s.state);
-  if (over && open) {
-    if (!handCardDrag) {
-      handCardDrag = { x: px, startSlide: activeModule };
-      $("card-slider").classList.add("dragging");
-    }
-    const dx = px - handCardDrag.x;
-    syncCardTrack(dx);
-    const threshold = Math.min(100, cardStepPx() * 0.28);
-    if (Math.abs(dx) > threshold) {
-      const next = handCardDrag.startSlide + (dx < 0 ? 1 : -1);
-      handCardDrag = null;
-      $("card-slider").classList.remove("dragging");
-      selectModule(next);
-    }
-  } else if (handCardDrag) {
-    const dx = px - handCardDrag.x;
-    handCardDrag = null;
-    $("card-slider").classList.remove("dragging");
-    const threshold = Math.min(80, cardStepPx() * 0.2);
-    if (Math.abs(dx) > threshold)
-      selectModule(activeModule + (dx < 0 ? 1 : -1));
-    else selectModule(activeModule);
-  }
-}
+document.querySelectorAll<HTMLElement>(".orbit-node").forEach((el,i)=>el.onclick=()=>workspace.open(["energy","earth","mission","status"][i]));
 $("reset").onclick = reset;
 $("rotate").onclick = () => {
   if (!scene) return;
@@ -755,66 +462,12 @@ $("switch-camera").onclick = () => {
 for (const key of ["minCutoff", "beta", "dCutoff"] as const)
   $<HTMLInputElement>(key).oninput = (e) =>
     (engine.smoother[key] = Number((e.target as HTMLInputElement).value));
-$<HTMLInputElement>("ai-fallback").onchange = (e) =>
-  (resolver.enabled = (e.target as HTMLInputElement).checked);
-document.addEventListener("keydown", (e) => {
-  if ((e.target as HTMLElement).matches("input")) return;
-  if (e.shiftKey && e.key.toLowerCase() === "d") toggleDebug();
-  if (e.key === "Escape") {
-    $("inspection").hidden = true;
-    $("debug").hidden = true;
-    interaction.release();
-  }
-  if (e.key === "ArrowRight") selectModule(activeModule + 1);
-  if (e.key === "ArrowLeft") selectModule(activeModule - 1);
-});
-$("command").onsubmit = async (e) => {
-  e.preventDefault();
-  const input = $<HTMLInputElement>("command-input");
-  if (!input.value.trim()) return;
-  $<HTMLButtonElement>("command-send").disabled = true;
-  $("link-mode").textContent = "RESOLVING";
-  try {
-    const decision = await ai.request({
-      kind: "command",
-      text: input.value.trim(),
-    });
-    if (!decision || decision.confidence < 0.7 || decision.action === "NONE") {
-      toast("Command unclear. Try “open diagnostics” or “reset scene”.");
-      return;
-    }
-    switch (decision.action) {
-      case "OPEN_DIAGNOSTICS":
-      case "SHOW_STATS":
-        $("debug").hidden = false;
-        break;
-      case "RESET_SCENE":
-        reset();
-        break;
-      case "CLOSE_PANEL":
-        $("inspection").hidden = true;
-        $("debug").hidden = true;
-        break;
-      case "ROTATE_OBJECT":
-        $("rotate").click();
-        break;
-      case "FOCUS_OBJECT":
-        selectModule(decision.target === "globe" ? 1 : 0);
-        break;
-      case "OPEN_PANEL":
-        if (decision.target === "diagnostics") $("debug").hidden = false;
-        else inspect();
-        break;
-    }
-    toast("Command applied.");
-    input.value = "";
-  } catch (err) {
-    toast((err as Error).message);
-  } finally {
-    $<HTMLButtonElement>("command-send").disabled = false;
-    $("link-mode").textContent = "LOCAL";
-  }
-};
+$("ai-fallback").closest("label")?.remove();
+$("debug").insertAdjacentHTML("beforeend", '<label>Pinch close<input id="pinch-close" type="range" min=".18" max=".7" step=".01" value=".5"></label><label>Pinch release<input id="pinch-release" type="range" min=".3" max="1" step=".01" value=".7"></label><button class="utility" id="save-thresholds">Save thresholds</button>');
+$("pinch-close").oninput=e=>{engine.enter=Number((e.target as HTMLInputElement).value);engine.exit=Math.max(engine.exit,engine.enter+.1);($('pinch-release') as HTMLInputElement).value=String(engine.exit);};
+$("pinch-release").oninput=e=>{engine.exit=Math.max(engine.enter+.1,Number((e.target as HTMLInputElement).value));};
+$("save-thresholds").onclick=()=>{const c=CalibrationManager.load()??calibration.finish(camera.facing);c.enter=c.pinchCloseThreshold=engine.enter;c.exit=c.pinchReleaseThreshold=engine.exit;CalibrationManager.save(c);toast("Pinch thresholds saved.");};
+document.addEventListener("keydown",e=>{if((e.target as HTMLElement).matches("input,textarea"))return;if(e.shiftKey&&e.key.toLowerCase()==="d")toggleDebug();if(e.key==="Escape"){$("inspection").hidden=true;$("debug").hidden=true;interaction.release();}});
 // Pointer and keyboard fallback remain available independently of the camera.
 let mouseGrab: string | null = null;
 let slidingScale = false;
@@ -838,7 +491,7 @@ $("hologram-slider").addEventListener("pointercancel", () => {
   slidingScale = false;
 });
 document.addEventListener("pointerdown", (e) => {
-  if (mode !== "mouse") return;
+  if (!$("welcome").hidden) return;
   const target = (e.target as HTMLElement).closest<HTMLElement>(
     '[data-draggable="true"]',
   );
@@ -887,6 +540,8 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", () => {
   stopCamera();
+  workspace.voice.dispose();
+  workspace.assistant.cancel();
   scene?.dispose();
 });
 window.addEventListener("orientationchange", () => {
@@ -979,6 +634,12 @@ function paintHandSkeleton(
       target.stroke();
     }
     target.shadowBlur = 0;
+    if(!$("debug").hidden){
+      target.strokeStyle="#ffe6a2";target.lineWidth=2;
+      target.beginPath();target.moveTo(pts[4].x,pts[4].y);target.lineTo(pts[8].x,pts[8].y);target.stroke();
+      target.font=screenSpace?"13px monospace":"10px monospace";target.fillStyle="#fff6a8";
+      target.fillText(`${state?.pinch.toFixed(2)??"—"} | ${((state?.pinchConfidence??0)*100).toFixed(0)}% | ${state?.pinchState??"OPEN"}`,Math.max(5,Math.min(width-250,pts[8].x)),Math.max(16,pts[8].y-18));
+    }
     for (let i = 0; i < pts.length; i++) {
       const tip = i === 4 || i === 8;
       target.beginPath();
@@ -1041,12 +702,11 @@ function frame(t: number) {
   const dt = (t - lastFrame) / 1000;
   lastFrame = t;
   perf.update(t);
+  if(running && tracker.inferenceMs>45)perf.quality="LOW";
   if (running) {
     void tracker.tick(video, t);
     if (t - lastResult > 180) {
-      const held =
-        t - lastHandSeen < 400 && lastHands.length ? lastHands : [];
-      state = engine.update(held, t, null);
+      state = engine.update([], t, null);
       applyState(state, t);
     }
     if (video.currentTime !== lastCameraTime) {
@@ -1069,6 +729,7 @@ function frame(t: number) {
     if (speed) window.scrollBy(0, speed * Math.min(dt, 0.05));
   }
   interaction.tick(dt);
+  workspace.tick(dt,t);
   scene?.render(t, perf.quality, state?.point);
   if (running || !$("camera-preview").hidden) drawLandmarks();
   if (t - lastDebug > 300) {
@@ -1081,7 +742,7 @@ function frame(t: number) {
     $("inspection-scale").textContent = (scene?.scale ?? 1).toFixed(2) + "×";
     if (!$("debug").hidden) {
       const b = ai.budget;
-      $("debug-data").textContent =
+      $("debug-data").textContent = `Pinch confidence ${(100*(state?.pinchConfidence??0)).toFixed(0)}%\nPinch state      ${state?.pinchState??"OPEN"}\nThresholds       ${engine.enter.toFixed(2)} / ${engine.exit.toFixed(2)}\nInteraction mode ${workspace.mode}\nActive module    ${workspace.active??"carousel"}\nTracking loss    ${state?.trackingLossMs??0} ms\nVoice state      ${workspace.voice.state}\nAssistant calls  ${workspace.assistant.requests}\nAssistant tokens ${workspace.assistant.inputTokens} in / ${workspace.assistant.outputTokens} out\n` +
         `Camera FPS      ${cameraFps.toFixed(1)}\nRender FPS      ${perf.fps.toFixed(1)}\nTracking FPS    ${running ? tracker.trackingFps.toFixed(1) : "0"}\nInference       ${tracker.inferenceMs.toFixed(1)} ms\nHand confidence ${((state?.confidence ?? 0) * 100).toFixed(0)}%\nRaw pointer     ${state ? `${state.raw.x.toFixed(3)}, ${state.raw.y.toFixed(3)}` : "—"}\nFiltered        ${state ? `${state.point.x.toFixed(3)}, ${state.point.y.toFixed(3)}` : "—"}\nVelocity        ${state ? Math.hypot(state.velocity.x, state.velocity.y).toFixed(3) : "—"}\nPinch ratio     ${state?.pinch.toFixed(3) ?? "—"}\nGesture         ${state?.state ?? "IDLE"}\nTarget          ${interaction.selected}\nQuality         ${perf.quality}\nGemini attempts ${b.geminiCalls}\nInput tokens    ${b.inputTokens}\nOutput tokens   ${b.outputTokens}\nEst. saved      ${b.estimatedTokensSaved}`;
     }
   }

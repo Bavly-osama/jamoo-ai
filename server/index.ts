@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { validatePayload } from "./schema";
 import { parseDecision } from "./parseDecision";
 import { TokenBudgetManager } from "../src/ai/TokenBudgetManager";
+import { assistantHandler } from "./assistant";
 const app = express();
 const budget = new TokenBudgetManager();
 const ai = process.env.GEMINI_API_KEY
@@ -29,7 +30,8 @@ app.use(
     },
   }),
 );
-app.use(express.json({ limit: "2kb" }));
+app.use(express.json({ limit: "8kb" }));
+app.post("/api/assistant", rateLimit({windowMs:60000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}), assistantHandler);
 app.get("/api/health", (_req, res) =>
   res.json({ ok: true, aiEnabled: Boolean(ai) }),
 );

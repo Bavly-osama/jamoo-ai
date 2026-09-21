@@ -8,21 +8,20 @@ export class InteractionManager {
   private goal = { x: 0, y: 0 };
   private velocity = { x: 0, y: 0 };
   hit(x: number, y: number, pad = this.pad) {
-    const modal = document.querySelector(".welcome:not([hidden])");
+    const modal = document.querySelector(".welcome:not([hidden])") ?? document.querySelector("#activity:not([hidden])");
     const elements = [
       ...document.querySelectorAll<HTMLElement>("[data-target]"),
     ].reverse();
-    return (
-      elements.find((el) => {
+    const find=(exact:boolean)=>elements.find((el) => {
         if (
           el.closest("[hidden]") ||
           el.hasAttribute("disabled") ||
-          (modal && !modal.contains(el))
+          (modal && !modal.contains(el) && !el.closest("#assistant-panel:not([hidden])"))
         )
           return false;
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) return false;
-        const soft =
+        const soft = exact ? 0 :
           el.dataset.target === "tutorial"
             ? Math.max(pad, 56)
             : el.dataset.target === "core"
@@ -36,8 +35,9 @@ export class InteractionManager {
           y >= r.top - soft &&
           y <= r.bottom + soft
         );
-      })?.dataset.target ?? null
-    );
+      });
+    // Expanded targets assist imprecise hands but must never steal an exact hit.
+    return (find(true)??find(false))?.dataset.target??null;
   }
   handle(event: GestureEvent) {
     if (event.type === "click" && event.target) {
@@ -48,6 +48,11 @@ export class InteractionManager {
       );
       if (!el) return;
       this.selected = event.target;
+      if(el instanceof HTMLInputElement && el.type==="range" && event.point){
+        const r=el.getBoundingClientRect(),min=Number(el.min)||0,max=Number(el.max)||100;
+        el.value=String(min+Math.max(0,Math.min(1,(event.point.x*innerWidth-r.left)/r.width))*(max-min));
+        el.dispatchEvent(new Event("input",{bubbles:true}));
+      }
       el.click();
       if (el.dataset.draggable === "true" && event.point) {
         this.grabbed = el;

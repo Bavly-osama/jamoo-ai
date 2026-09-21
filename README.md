@@ -16,21 +16,21 @@ npm run dev
 
 Open http://localhost:5173. Optional: set `GEMINI_API_KEY` in `.env` and restart the server. Never use a `VITE_` prefix for secrets. No API key is needed for tracking, gestures, graphics, or calibration.
 
-Select **Enable camera**, allow access, and follow the short tutorial: open palm, move left/right, then **Pinch here** once. A live hand skeleton stays visible while the camera is on. **Explore with mouse** is a separate camera-free preview; it does not mark calibration complete.
+Select **Enable camera**, allow access, and follow the nine-stage tutorial: raise a hand, reach a target, move left/right, pinch, hold, drag, move the carousel, zoom with two hands, and try voice. Optional zoom/microphone skips are recorded explicitly. A live hand skeleton stays visible while the camera is on. **Explore with mouse** is a separate camera-free preview; it does not mark calibration complete. See [QA-REPORT.md](QA-REPORT.md) for verified behavior and remaining physical acceptance checks.
 
 The browser must receive actual changing video frames before loading the model. No-hand video remains in setup. A front camera mirrors both video and coordinate interpretation exactly once. A rear camera is not mirrored. Returning from a backgrounded tab requires enabling the camera again; this intentionally avoids silently reopening it.
 
 ### Controls
 
 - Index fingertip: pointer. Thumb/index pinch: select once. Continue holding: drag a module tile. Release: drop.
-- Open palm held still for a moment closes inspection or diagnostics.
+- Use Back, Escape, or the local “go back” command to close modules. A stationary open palm does not dismiss your work.
 - Hold the open-hand pointer near the top/bottom screen edge for half a second to scroll on smaller screens; scrolling stops while grabbing.
-- Open-hand horizontal swipe: next/previous module; disabled while pinching or dragging.
+- Open-hand horizontal movement over the carousel pushes cards continuously, with bounded inertia and edge resistance; disabled while pinching, dragging, zooming or using voice.
 - Pinch with **both** hands for 120 ms, then spread/contract: continuous object scale. Release both before selecting again.
-- The circular ring around the hologram (CORE / ATLAS / SCAN / SYS) switches the 3D object. The carousel below does the same.
+- The carousel contains ten interactive modules. Pinch/click opens a module; Earth and Energy Core support rotation/scale, Files and Mission Control support dragging, and other modules expose telemetry or simulation controls.
 - Mouse: click modules, drag tiles, wheel over the reactor to resize. Arrow keys navigate modules. Escape closes panels.
-- **Shift+D** or **Diagnostics**: live metrics, smoothing parameters, optional landmarks, camera restart/switch, recalibration, opt-in semantic fallback.
-- AI command box: e.g. “open system diagnostics”, “focus globe”, “reset scene”. Requires server configuration.
+- **Shift+D** or **Diagnostics**: live metrics, pinch confidence/state, editable thresholds, landmarks, camera restart/switch and recalibration.
+- JARVIS command box: “open diagnostics”, “open earth”, “next card”, “go back”, “zoom in”, and “summarize this screen” run locally without Gemini. General questions stream from the configured Gemini server. Open AI Assistant and press Listen for browser speech recognition; text remains available when recognition is unsupported. Speech synthesis reads answers unless muted.
 
 ## Architecture and files
 
@@ -55,6 +55,10 @@ There is one `requestAnimationFrame` chain. The tracker accepts a new frame only
 MediaPipe exposes handedness classification scores, not a public per-result detection confidence. Diagnostics label that distinction. Internal detection, presence and tracking thresholds are 0.65. Hand identity uses handedness; extended occlusion/crossing still requires physical validation.
 
 ## Gemini safeguards
+
+The current assistant uses `POST /api/assistant`. Application commands are classified locally before any request, and real-time gestures never call AI. Questions use at most four bounded context messages, a 512-output-token limit, cancellation, timeouts and a short cache for self-contained questions. Express applies an eight-request/minute limiter; the shared handler applies concurrency and conservative process-local token reservations. Vercel uses the shared handler. Process-local budgets are not durable distributed quotas. Speech recognition may use the browser vendor's speech service; camera video stays local.
+
+The older gesture endpoint described below is retained for compatibility and its tests; it is no longer connected to the active gesture UI.
 
 `POST /api/gesture/resolve` accepts a strict command or compact gesture telemetry object; unknown fields, images and large payloads are rejected. Output is a validated action enum, never code. Local confidence ≥0.75, ambiguity <900 ms, and active pinching do not call Gemini. The optional fallback considers only a slow ambiguous horizontal sweep over the module region; it is disabled by default. Stale decisions cannot interrupt an active gesture.
 

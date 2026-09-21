@@ -83,12 +83,12 @@ describe("temporal interaction", () => {
     h.confidence = 0.2;
     expect(e.update([h], 0, "core").visible).toBe(false);
   });
-  it("open palm dwell emits one cancel without clicking", () => {
+  it("open palm dwell leaves the active module open without clicking", () => {
     const e = new GestureEngine();
     const events = [];
     for (let i = 0; i < 20; i++)
       events.push(...e.update([hand(0.5, 0.5, 0.8)], i * 40, "core").events);
-    expect(events.filter((x) => x.type === "cancel")).toHaveLength(1);
+    expect(events.filter((x) => x.type === "cancel")).toHaveLength(0);
     expect(events.some((x) => x.type === "click")).toBe(false);
   });
   it("moving open palm does not emit cancel", () => {
@@ -132,7 +132,7 @@ describe("temporal interaction", () => {
       );
     expect(events.some((x) => x.type === "click")).toBe(true);
   });
-  it("treats a fast closing motion as a pinch", () => {
+  it("fast closing without contact does not count as a pinch", () => {
     const e = new GestureEngine();
     e.openBaseline = 1;
     const events = [];
@@ -144,9 +144,9 @@ describe("temporal interaction", () => {
           "tutorial",
         ).events,
       );
-    expect(events.some((x) => x.type === "click")).toBe(true);
+    expect(events.some((x) => x.type === "click")).toBe(false);
   });
-  it("easy mode accepts a loose near-miss pinch", () => {
+  it("onboarding cannot bypass contact with a loose near-miss pinch", () => {
     const e = new GestureEngine();
     e.easyMode = true;
     e.openBaseline = 0.95;
@@ -156,7 +156,7 @@ describe("temporal interaction", () => {
         ...e.update([hand(0.5, 0.5, i < 2 ? 0.95 : 0.82)], i * 40, "tutorial")
           .events,
       );
-    expect(events.some((x) => x.type === "click")).toBe(true);
+    expect(events.some((x) => x.type === "click")).toBe(false);
   });
   it("two hands crossing retain primary identity", () => {
     const e = new GestureEngine();
